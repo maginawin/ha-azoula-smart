@@ -1,0 +1,21 @@
+__pycache__
+.pytest_cache
+.mypy_cache
+.vscode
+.idea
+
+venv/
+old/
+
+.DS_Store
+
+# Python package build artifacts
+*.egg-info/
+build/
+dist/
+
+# Coverage reports
+coverage.xml
+htmlcov/
+.coverage
+.coverage.*

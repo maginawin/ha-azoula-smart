@@ -1,0 +1,18 @@
+{
+  "domain": "sunricher",
+  "name": "Azoula Smart",
+  "codeowners": [
+    "@maginawin",
+    "@niracler"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "mqtt"
+  ],
+  "documentation": "https://github.com/maginawin/ha-azoula-smart",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "version": "0.1.0"
+}
