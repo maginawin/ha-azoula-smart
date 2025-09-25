@@ -266,7 +266,7 @@ class AzoulaSmartHub:
                 device_id=raw_device_data.get("deviceID", ""),
                 profile=raw_device_data.get("profile", ""),
                 device_type=raw_device_data.get("deviceType", ""),
-                product_id=raw_device_data.get("productID", ""),
+                product_id=raw_device_data.get("productId", ""),
                 version=raw_device_data.get("version", ""),
                 device_status=raw_device_data.get("deviceStatus", ""),
                 online=raw_device_data.get("online", ""),
@@ -274,7 +274,7 @@ class AzoulaSmartHub:
                 manufacturer=raw_device_data.get("manufacturer", ""),
                 manufacturer_code=raw_device_data.get("manufacturerCode", 0),
                 image_type=raw_device_data.get("imageType", 0),
-                household_id=raw_device_data.get("householdID", ""),
+                household_id=raw_device_data.get("householdId", ""),
                 is_added=raw_device_data.get("isAdded", ""),
             )
             if device not in self._devices_result:

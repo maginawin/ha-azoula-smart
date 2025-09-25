@@ -10,7 +10,6 @@ TOPIC_WEATHER_PREFIX = "meribee/weather/notify"
 
 # Default values
 DEFAULT_MQTT_PORT = 1883
-DEFAULT_MQTT_QOS = 1
 
 # Device types mapping (from protocol doc)
 DEVICE_TYPE_MAPPING = {
