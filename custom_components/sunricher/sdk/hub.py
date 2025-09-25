@@ -23,8 +23,11 @@ except ImportError:
 
 from .const import (
     DEFAULT_MQTT_PORT,
+    METHOD_DEVICE_OFFLINE,
+    METHOD_DEVICE_ONLINE,
     METHOD_GET_ALL_DEVICES,
     METHOD_GET_ALL_DEVICES_REPLY,
+    METHOD_PROPERTY_POST,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
 )
@@ -87,12 +90,38 @@ class AzoulaSmartHub:
         self._mqtt_client.on_disconnect = self._on_disconnect
         self._mqtt_client.on_message = self._on_message
 
-        # Callbacks
+        # Event callbacks - following pySrDaliGateway pattern
         self._on_online_status: Callable[[str, bool], None] | None = None
+        self._on_device_status: Callable[[str, dict[str, Any]], None] | None = None
+        self._on_property_update: Callable[[str, dict[str, Any]], None] | None = None
 
         # Device discovery state
         self._devices_received = asyncio.Event()
         self._devices_result: list[DeviceType] = []
+
+    @property
+    def on_device_status(self) -> Callable[[str, dict[str, Any]], None] | None:
+        """Get device status change callback."""
+        return self._on_device_status
+
+    @on_device_status.setter
+    def on_device_status(
+        self, callback: Callable[[str, dict[str, Any]], None] | None
+    ) -> None:
+        """Set device status change callback."""
+        self._on_device_status = callback
+
+    @property
+    def on_property_update(self) -> Callable[[str, dict[str, Any]], None] | None:
+        """Get device property update callback."""
+        return self._on_property_update
+
+    @on_property_update.setter
+    def on_property_update(
+        self, callback: Callable[[str, dict[str, Any]], None] | None
+    ) -> None:
+        """Set device property update callback."""
+        self._on_property_update = callback
 
     def _on_connect(
         self,
@@ -182,6 +211,9 @@ class AzoulaSmartHub:
 
             command_handlers: dict[str, Callable[[dict[str, Any]], None]] = {
                 METHOD_GET_ALL_DEVICES_REPLY: self._handle_devices_response,
+                METHOD_DEVICE_ONLINE: self._handle_device_online,
+                METHOD_DEVICE_OFFLINE: self._handle_device_offline,
+                METHOD_PROPERTY_POST: self._handle_property_post,
             }
 
             handler = command_handlers.get(method)
@@ -249,6 +281,50 @@ class AzoulaSmartHub:
                 self._devices_result.append(device)
 
         self._devices_received.set()
+
+    def _handle_device_online(self, payload: dict[str, Any]) -> None:
+        """Handle device online notification."""
+        device_id = payload.get("deviceID", "")
+
+        _LOGGER.debug(
+            "Gateway %s: Device %s came online",
+            self._gateway_id,
+            device_id,
+        )
+
+        # Trigger device status callback
+        if self._on_device_status:
+            self._on_device_status(device_id, {"online": True})
+
+    def _handle_device_offline(self, payload: dict[str, Any]) -> None:
+        """Handle device offline notification."""
+        device_id = payload.get("deviceID", "")
+
+        _LOGGER.debug(
+            "Gateway %s: Device %s went offline",
+            self._gateway_id,
+            device_id,
+        )
+
+        # Trigger device status callback
+        if self._on_device_status:
+            self._on_device_status(device_id, {"online": False})
+
+    def _handle_property_post(self, payload: dict[str, Any]) -> None:
+        """Handle device property update."""
+        device_id = payload.get("deviceID", "")
+        params = payload.get("params", {})
+
+        _LOGGER.debug(
+            "Gateway %s: Device %s property update: %s",
+            self._gateway_id,
+            device_id,
+            params,
+        )
+
+        # Trigger property update callback
+        if self._on_property_update:
+            self._on_property_update(device_id, params)
 
     async def connect(self) -> None:
         """Connect to the MQTT broker."""

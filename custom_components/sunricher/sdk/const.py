@@ -1,5 +1,7 @@
 """Constants for the Dali Center."""
 
+DOMAIN = "sunricher"
+
 # MQTT Topics
 TOPIC_GATEWAY_PREFIX = "meribee/gateway"
 TOPIC_PLATFORM_APP_PREFIX = "meribee/platform-app"

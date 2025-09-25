@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .const import DEVICE_CAPABILITIES, DEVICE_TYPE_TO_PLATFORM
+from .const import DEVICE_CAPABILITIES, DEVICE_TYPE_TO_PLATFORM, DOMAIN
 from .types import DeviceType
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ class DeviceModelProcessor:
         # Add common device info
         capabilities: dict[str, Any] = {
             "device_info": {
-                "identifiers": device["device_id"],
-                "name": self._get_device_name(device),
+                "identifiers": {(DOMAIN, device["device_id"])},
+                "name": self.get_device_name(device),
                 "manufacturer": device["manufacturer"] or "Unknown",
                 "model": device["product_id"] or "Unknown",
                 "sw_version": device["version"],
@@ -45,7 +45,7 @@ class DeviceModelProcessor:
 
         return capabilities
 
-    def _get_device_name(self, device: DeviceType) -> str:
+    def get_device_name(self, device: DeviceType) -> str:
         """Generate a friendly name for the device."""
         if device["product_id"]:
             return device["product_id"]
