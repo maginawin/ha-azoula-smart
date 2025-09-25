@@ -10,10 +10,10 @@ from typing import cast
 
 from dotenv import load_dotenv
 
-from custom_components.sunricher.sdk.device_model import DeviceModelProcessor
-from custom_components.sunricher.sdk.exceptions import AzoulaSmartHubError
-from custom_components.sunricher.sdk.hub import AzoulaSmartHub
-from custom_components.sunricher.sdk.types import DeviceType
+from custom_components.azoula_smart.sdk.device_model import DeviceModelProcessor
+from custom_components.azoula_smart.sdk.exceptions import AzoulaSmartHubError
+from custom_components.azoula_smart.sdk.hub import AzoulaSmartHub
+from custom_components.azoula_smart.sdk.types import DeviceType
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"

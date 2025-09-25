@@ -1,4 +1,4 @@
-"""Constants for the Dali Center."""
+"""Constants for the Azoula Smart."""
 
 DOMAIN = "azoula_smart"
 

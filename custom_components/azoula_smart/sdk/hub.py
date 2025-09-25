@@ -63,7 +63,7 @@ class AzoulaSmartHub:
         # MQTT client - handle compatibility between paho-mqtt versions
         # Add timestamp to client ID to avoid conflicts
         timestamp = int(time.time())
-        client_id = f"ha_dali_center_{self._gateway_id}_{timestamp}"
+        client_id = f"ha_azoula_smart_{self._gateway_id}_{timestamp}"
 
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
@@ -90,7 +90,7 @@ class AzoulaSmartHub:
         self._mqtt_client.on_disconnect = self._on_disconnect
         self._mqtt_client.on_message = self._on_message
 
-        # Event callbacks - following pySrDaliGateway pattern
+        # Event callbacks
         self._on_online_status: Callable[[str, bool], None] | None = None
         self._on_device_status: Callable[[str, dict[str, Any]], None] | None = None
         self._on_property_update: Callable[[str, dict[str, Any]], None] | None = None
