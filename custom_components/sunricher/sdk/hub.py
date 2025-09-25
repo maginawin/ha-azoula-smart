@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 import json
 import logging
+import time
 from typing import Any
 import uuid
 
@@ -57,17 +58,21 @@ class AzoulaSmartHub:
         self._pub_topic = f"{TOPIC_GATEWAY_PREFIX}/{self._gateway_id}"
 
         # MQTT client - handle compatibility between paho-mqtt versions
+        # Add timestamp to client ID to avoid conflicts
+        timestamp = int(time.time())
+        client_id = f"ha_dali_center_{self._gateway_id}_{timestamp}"
+
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
             self._mqtt_client = paho_mqtt.Client(
                 CallbackAPIVersion.VERSION2,  # pyright: ignore[reportPossiblyUnboundVariable]
-                client_id=f"ha_dali_center_{self._gateway_id}",
+                client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
         else:
             # paho-mqtt < 2.0.0
             self._mqtt_client = paho_mqtt.Client(
-                client_id=f"ha_dali_center_{self._gateway_id}",
+                client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
 
