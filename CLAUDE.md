@@ -125,7 +125,7 @@ Detailed explanation of changes (if necessary)
 
 **Examples:**
 
-- `feat(gateway): add support for DALI device groups`
+- `feat(gateway): add support for Azoula device groups`
 - `fix(sensor): correct energy sensor precision`
 - `docs(readme): update installation instructions`
 - `chore(release): bump version to 0.2.0`

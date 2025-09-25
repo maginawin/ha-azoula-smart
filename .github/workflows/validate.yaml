@@ -1,0 +1,95 @@
+name: Validate with hassfest
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
+  validate-ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        run: |
+          ruff check .
+
+      - name: Check formatting with ruff
+        run: |
+          ruff format --check .
+
+  validate-mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Type check with mypy
+        run: |
+          mypy --show-error-codes --pretty custom_components/azoula_smart
+
+  validate-setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Install the integration
+        run: |
+          export config_path=./test_config
+          mkdir $config_path
+          ./install.sh $config_path
+          echo "default_config:" >> $config_path/configuration.yaml
+          echo "logger:" >> $config_path/configuration.yaml
+          echo "  default: info" >> $config_path/configuration.yaml
+          echo "  logs:" >> $config_path/configuration.yaml
+          echo "    custom_components.azoula_smart: debug" >> $config_path/configuration.yaml
+
+      - name: Setup Home Assistant
+        id: homeassistant
+        uses: ludeeus/setup-homeassistant@main
+        with:
+          config-dir: ./test_config
+
+  validate-hacs:
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: HACS validation
+        uses: "hacs/action@main"
+        with:
+          category: "integration"
