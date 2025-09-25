@@ -5,18 +5,23 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_ID,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    Platform,
+)
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
-from .api import AzoulaSmartAPI
+from .sdk.hub import AzoulaSmartHub
 
 _LOGGER = logging.getLogger(__name__)
 
 # Supported platforms
-PLATFORMS: list[Platform] = [Platform.LIGHT]
+PLATFORMS: list[Platform] = []
 
-type AzoulaSmartConfigEntry = ConfigEntry[AzoulaSmartAPI]
+type AzoulaSmartConfigEntry = ConfigEntry[AzoulaSmartHub]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
@@ -25,22 +30,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
     host = entry.data[CONF_HOST]
     username = entry.data[CONF_USERNAME]
     password = entry.data[CONF_PASSWORD]
+    gateway_id = entry.data[CONF_ID]
 
     # Create API instance
-    api = AzoulaSmartAPI(
-        hass=hass,
+    hub = AzoulaSmartHub(
         host=host,
         username=username,
         password=password,
-        gateway_id=entry.unique_id,
+        gateway_id=gateway_id,
     )
 
-    if not await api.async_connect():
-        raise ConfigEntryNotReady(
-            f"Could not connect to Azoula Smart gateway at {host}"
-        )
-
-    entry.runtime_data = api
+    await hub.connect()
+    entry.runtime_data = hub
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _LOGGER.info("Azoula Smart integration setup completed for %s", host)
@@ -53,7 +54,7 @@ async def async_unload_entry(
     """Unload a config entry."""
 
     # Disconnect from MQTT
-    api = entry.runtime_data
-    await api.async_disconnect()
+    hub = entry.runtime_data
+    await hub.disconnect()
 
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
