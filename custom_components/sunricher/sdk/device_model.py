@@ -27,8 +27,8 @@ class DeviceModelProcessor:
             "device_info": {
                 "identifiers": {(DOMAIN, device["device_id"])},
                 "name": self.get_device_name(device),
-                "manufacturer": device["manufacturer"] or "Unknown",
-                "model": device["product_id"] or "Unknown",
+                "manufacturer": device["manufacturer"],
+                "model": device["product_id"],
                 "sw_version": device["version"],
             },
         }
@@ -47,10 +47,7 @@ class DeviceModelProcessor:
 
     def get_device_name(self, device: DeviceType) -> str:
         """Generate a friendly name for the device."""
-        if device["product_id"]:
-            return device["product_id"]
 
-        # Fallback to device type description
         type_names = {
             "0100": "ON/OFF Light",
             "0101": "Dimmable Light",
