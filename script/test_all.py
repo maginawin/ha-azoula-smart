@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple SDK connection test script with only connect and disconnect functionality."""
+"""SDK test script for connection, device discovery, and disconnect functionality."""
 
 import argparse
 import asyncio
@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AzoulaHubTester:
-    """Simple tester for Azoula Hub SDK connect/disconnect."""
+    """Tester for Azoula Hub SDK connection, device discovery, and disconnect."""
 
     def __init__(self) -> None:
         """Initialize the tester."""
@@ -53,6 +53,32 @@ class AzoulaHubTester:
         else:
             _LOGGER.info(" Successfully connected to gateway!")
             return True
+
+    async def test_get_all_devices(self) -> bool:
+        """Test getting all devices from gateway."""
+        if not self.gateway or not self.is_connected:
+            _LOGGER.warning("Not connected to any gateway")
+            return False
+
+        _LOGGER.info("=== Testing Get All Devices ===")
+        try:
+            devices = await self.gateway.get_all_devices()
+            _LOGGER.info("✓ Device discovery completed")
+            _LOGGER.info("Found %d device(s):", len(devices))
+
+            for i, device in enumerate(devices, 1):
+                _LOGGER.info("  Device %d:", i)
+                _LOGGER.info("    ID: %s", device.get("device_id", "N/A"))
+                _LOGGER.info("    Type: %s", device.get("device_type", "N/A"))
+                _LOGGER.info("    Product: %s", device.get("product_id", "N/A"))
+                _LOGGER.info("    Online: %s", device.get("online", "N/A"))
+                _LOGGER.info("    Protocol: %s", device.get("protocol", "N/A"))
+
+        except Exception:
+            _LOGGER.exception("Get all devices error")
+            return False
+
+        return True
 
     async def test_disconnect(self) -> bool:
         """Test disconnect from gateway."""
@@ -134,6 +160,11 @@ async def main() -> bool:
 
         if not success:
             return False
+
+        # Test device discovery
+        success = await tester.test_get_all_devices()
+        if not success:
+            _LOGGER.error("Device discovery test failed")
 
         # Test disconnect
         success = await tester.test_disconnect()

@@ -7,6 +7,7 @@ from collections.abc import Callable
 import json
 import logging
 from typing import Any
+import uuid
 
 import paho.mqtt.client as paho_mqtt
 
@@ -19,8 +20,15 @@ except ImportError:
     # paho-mqtt < 2.0.0 doesn't have CallbackAPIVersion
     HAS_CALLBACK_API_VERSION = False  # pyright: ignore[reportConstantRedefinition]
 
-from .const import DEFAULT_MQTT_PORT, TOPIC_GATEWAY_PREFIX, TOPIC_PLATFORM_APP_PREFIX
+from .const import (
+    DEFAULT_MQTT_PORT,
+    METHOD_GET_ALL_DEVICES,
+    METHOD_GET_ALL_DEVICES_REPLY,
+    TOPIC_GATEWAY_PREFIX,
+    TOPIC_PLATFORM_APP_PREFIX,
+)
 from .exceptions import AzoulaSmartHubError
+from .types import DeviceType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +84,166 @@ class AzoulaSmartHub:
 
         # Callbacks
         self._on_online_status: Callable[[str, bool], None] | None = None
+
+        # Device discovery state
+        self._devices_received = asyncio.Event()
+        self._devices_result: list[DeviceType] = []
+
+    def _on_connect(
+        self,
+        client: paho_mqtt.Client,
+        userdata: Any,
+        flags: Any,
+        rc: int,
+        properties: Any = None,
+    ) -> None:
+        self._connect_result = rc
+        self._connection_event.set()
+
+        if rc == 0:
+            _LOGGER.debug(
+                "Gateway %s: MQTT connection established to %s:%s",
+                self._gateway_id,
+                self._host,
+                self._port,
+            )
+            self._mqtt_client.subscribe(self._sub_topic)
+            _LOGGER.debug(
+                "Gateway %s: Subscribed to MQTT topic %s",
+                self._gateway_id,
+                self._sub_topic,
+            )
+
+            # Trigger online_status callback with gateway SN as device ID and True status
+            if self._on_online_status:
+                self._on_online_status(self._gateway_id, True)
+        else:
+            _LOGGER.error(
+                "Gateway %s: MQTT connection failed with code %s", self._gateway_id, rc
+            )
+
+    def _on_disconnect(
+        self,
+        client: paho_mqtt.Client,
+        userdata: Any,
+        *args: Any,
+    ) -> None:
+        # Handle different paho-mqtt versions:
+        # v1.6.x: (client, userdata, rc)
+        # v2.0.0+: (client, userdata, disconnect_flags, reason_code, properties)
+        if HAS_CALLBACK_API_VERSION and len(args) >= 2:
+            # paho-mqtt >= 2.0.0
+            reason_code = args[1]  # disconnect_flags, reason_code, properties
+        elif len(args) >= 1:
+            # paho-mqtt < 2.0.0
+            reason_code = args[0]  # rc
+        else:
+            reason_code = 0
+
+        if reason_code != 0:
+            _LOGGER.warning(
+                "Gateway %s: Unexpected MQTT disconnection (%s:%s) - Reason code: %s",
+                self._gateway_id,
+                self._host,
+                self._port,
+                reason_code,
+            )
+        else:
+            _LOGGER.debug("Gateway %s: MQTT disconnection completed", self._gateway_id)
+
+        # Trigger online_status callback with gateway SN as device ID and False status
+        if self._on_online_status:
+            self._on_online_status(self._gateway_id, False)
+
+    def _on_message(
+        self, client: paho_mqtt.Client, userdata: Any, msg: paho_mqtt.MQTTMessage
+    ) -> None:
+        try:
+            payload_json = json.loads(msg.payload.decode("utf-8", errors="replace"))
+            _LOGGER.debug(
+                "Gateway %s: Received MQTT message on topic %s: %s",
+                self._gateway_id,
+                msg.topic,
+                payload_json,
+            )
+
+            method = payload_json.get("method")
+            if not method:
+                _LOGGER.warning(
+                    "Gateway %s: Received MQTT message without method field",
+                    self._gateway_id,
+                )
+                return
+
+            command_handlers: dict[str, Callable[[dict[str, Any]], None]] = {
+                METHOD_GET_ALL_DEVICES_REPLY: self._handle_devices_response,
+            }
+
+            handler = command_handlers.get(method)
+            if handler:
+                handler(payload_json)
+            else:
+                _LOGGER.debug(
+                    "Gateway %s: Unhandled MQTT command '%s', payload: %s",
+                    self._gateway_id,
+                    method,
+                    payload_json,
+                )
+
+        except json.JSONDecodeError:
+            _LOGGER.exception(
+                "Gateway %s: Failed to decode MQTT message payload: %s",
+                self._gateway_id,
+                msg.payload,
+            )
+        except (ValueError, KeyError, TypeError):
+            _LOGGER.exception(
+                "Gateway %s: Error processing MQTT message", self._gateway_id
+            )
+
+    def _handle_devices_response(self, payload: dict[str, Any]) -> None:
+        """Handle device list response."""
+
+        code = payload.get("code", 0)
+
+        if code != 200:
+            _LOGGER.error(
+                "Gateway %s: Device list request failed with code %s",
+                self._gateway_id,
+                code,
+            )
+            self._devices_received.set()
+            return
+
+        data = payload.get("data", {})
+        device_list = data.get("deviceList", [])
+
+        _LOGGER.debug(
+            "Gateway %s: Received device list with %d devices",
+            self._gateway_id,
+            len(device_list),
+        )
+
+        for raw_device_data in device_list:
+            device = DeviceType(
+                device_id=raw_device_data.get("deviceID", ""),
+                profile=raw_device_data.get("profile", ""),
+                device_type=raw_device_data.get("deviceType", ""),
+                product_id=raw_device_data.get("productID", ""),
+                version=raw_device_data.get("version", ""),
+                device_status=raw_device_data.get("deviceStatus", ""),
+                online=raw_device_data.get("online", ""),
+                protocol=raw_device_data.get("protocol", ""),
+                manufacturer=raw_device_data.get("manufacturer", ""),
+                manufacturer_code=raw_device_data.get("manufacturerCode", 0),
+                image_type=raw_device_data.get("imageType", 0),
+                household_id=raw_device_data.get("householdID", ""),
+                is_added=raw_device_data.get("isAdded", ""),
+            )
+            if device not in self._devices_result:
+                self._devices_result.append(device)
+
+        self._devices_received.set()
 
     async def connect(self) -> None:
         """Connect to the MQTT broker."""
@@ -163,112 +331,37 @@ class AzoulaSmartHub:
                 f"Failed to disconnect from gateway {self._gateway_id}: {exc}"
             ) from exc
 
-    def _on_connect(
-        self,
-        client: paho_mqtt.Client,
-        userdata: Any,
-        flags: Any,
-        rc: int,
-        properties: Any = None,
-    ) -> None:
-        self._connect_result = rc
-        self._connection_event.set()
+    async def get_all_devices(self) -> list[DeviceType]:
+        """Get all devices from the gateway."""
+        self._devices_received = asyncio.Event()
+        self._devices_result.clear()
 
-        if rc == 0:
-            _LOGGER.debug(
-                "Gateway %s: MQTT connection established to %s:%s",
-                self._gateway_id,
-                self._host,
-                self._port,
-            )
-            self._mqtt_client.subscribe(self._sub_topic)
-            _LOGGER.debug(
-                "Gateway %s: Subscribed to MQTT topic %s",
-                self._gateway_id,
-                self._sub_topic,
-            )
+        message_id = str(uuid.uuid4()).upper()
+        request_payload = {
+            "id": message_id,
+            "deviceID": self._gateway_id,
+            "method": METHOD_GET_ALL_DEVICES,
+        }
 
-            # Trigger online_status callback with gateway SN as device ID and True status
-            if self._on_online_status:
-                self._on_online_status(self._gateway_id, True)
-        else:
-            _LOGGER.error(
-                "Gateway %s: MQTT connection failed with code %s", self._gateway_id, rc
-            )
+        _LOGGER.debug(
+            "Gateway %s: Sending device discovery request with message ID %s",
+            self._gateway_id,
+            message_id,
+        )
 
-    def _on_disconnect(
-        self,
-        client: paho_mqtt.Client,
-        userdata: Any,
-        *args: Any,
-    ) -> None:
-        # Handle different paho-mqtt versions:
-        # v1.6.x: (client, userdata, rc)
-        # v2.0.0+: (client, userdata, disconnect_flags, reason_code, properties)
-        if HAS_CALLBACK_API_VERSION and len(args) >= 2:
-            # paho-mqtt >= 2.0.0
-            reason_code = args[1]  # disconnect_flags, reason_code, properties
-        elif len(args) >= 1:
-            # paho-mqtt < 2.0.0
-            reason_code = args[0]  # rc
-        else:
-            reason_code = 0
+        self._mqtt_client.publish(self._pub_topic, json.dumps(request_payload))
 
-        if reason_code != 0:
-            _LOGGER.warning(
-                "Gateway %s: Unexpected MQTT disconnection (%s:%s) - Reason code: %s",
-                self._gateway_id,
-                self._host,
-                self._port,
-                reason_code,
-            )
-        else:
-            _LOGGER.debug("Gateway %s: MQTT disconnection completed", self._gateway_id)
-
-        # Trigger online_status callback with gateway SN as device ID and False status
-        if self._on_online_status:
-            self._on_online_status(self._gateway_id, False)
-
-    def _on_message(
-        self, client: paho_mqtt.Client, userdata: Any, msg: paho_mqtt.MQTTMessage
-    ) -> None:
         try:
-            payload_json = json.loads(msg.payload.decode("utf-8", errors="replace"))
-            _LOGGER.debug(
-                "Gateway %s: Received MQTT message on topic %s: %s",
+            await asyncio.wait_for(self._devices_received.wait(), timeout=30.0)
+        except TimeoutError:
+            _LOGGER.warning(
+                "Gateway %s: Timeout waiting for device discovery response",
                 self._gateway_id,
-                msg.topic,
-                payload_json,
             )
 
-            cmd = payload_json.get("cmd")
-            if not cmd:
-                _LOGGER.warning(
-                    "Gateway %s: Received MQTT message without cmd field",
-                    self._gateway_id,
-                )
-                return
-
-            command_handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
-
-            handler = command_handlers.get(cmd)
-            if handler:
-                handler(payload_json)
-            else:
-                _LOGGER.debug(
-                    "Gateway %s: Unhandled MQTT command '%s', payload: %s",
-                    self._gateway_id,
-                    cmd,
-                    payload_json,
-                )
-
-        except json.JSONDecodeError:
-            _LOGGER.exception(
-                "Gateway %s: Failed to decode MQTT message payload: %s",
-                self._gateway_id,
-                msg.payload,
-            )
-        except (ValueError, KeyError, TypeError):
-            _LOGGER.exception(
-                "Gateway %s: Error processing MQTT message", self._gateway_id
-            )
+        _LOGGER.info(
+            "Gateway %s: Device discovery completed, found %d device(s)",
+            self._gateway_id,
+            len(self._devices_result),
+        )
+        return self._devices_result
