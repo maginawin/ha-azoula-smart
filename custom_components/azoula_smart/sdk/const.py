@@ -1,6 +1,6 @@
 """Constants for the Dali Center."""
 
-DOMAIN = "sunricher"
+DOMAIN = "azoula_smart"
 
 # MQTT Topics
 TOPIC_GATEWAY_PREFIX = "meribee/gateway"

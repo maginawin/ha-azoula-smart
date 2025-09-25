@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Home Assistant custom integration for Azoula Smart Hub devices. It provides MQTT-based communication to control smart home devices through the Azoula/Meribee ecosystem. The integration uses the legacy domain name "sunricher" but is designed for Azoula Smart gateways.
+This is a Home Assistant custom integration for Azoula Smart Hub devices. It provides MQTT-based communication to control smart home devices through the Azoula/Meribee ecosystem. The integration is designed for Azoula Smart gateways.
 
 **Key Architecture Points:**
 
-- **Domain**: `sunricher` (legacy name, integration is for Azoula Smart)
+- **Domain**: `azoula_smart`
 - **Communication**: Local MQTT broker on Azoula gateway (default port 1883)
 - **IoT Class**: `local_push` (local network communication)
 - **Current Status**: Bronze quality scale - foundational MQTT layer complete, device platforms not yet implemented
@@ -39,7 +39,7 @@ python script/test_all.py --host 192.168.1.100 --username admin --password secre
 
 ## Architecture Overview
 
-### MQTT Communication Layer (`custom_components/sunricher/sdk/`)
+### MQTT Communication Layer (`custom_components/azoula_smart/sdk/`)
 
 The integration communicates with Azoula gateways via MQTT using a specific protocol:
 
