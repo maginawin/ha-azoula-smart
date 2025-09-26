@@ -66,8 +66,9 @@ DEVICE_CAPABILITIES = {
 METHOD_DEVICE_ONLINE = "thing.device.online"
 METHOD_DEVICE_OFFLINE = "thing.device.offline"
 METHOD_PROPERTY_POST = "thing.device.propPost"
-METHOD_EVENT_POST = "thing.device.eventPost"
-METHOD_PROPERTY_SET = "thing.device.propSet"
-METHOD_SERVICE_CALL = "thing.device.serviceCall"
 METHOD_GET_ALL_DEVICES = "thing.subdev.getall"
 METHOD_GET_ALL_DEVICES_REPLY = "thing.subdev.getall.reply"
+
+# Service call methods (from protocol doc)
+METHOD_SERVICE = "thing.service"
+METHOD_SERVICE_REPLY = "thing.service.reply"
