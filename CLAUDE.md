@@ -78,7 +78,7 @@ Currently defined constants for 5 device types (switch, light, sensor, cover, cl
 
 1. Configure environment variables in `.env`:
 
-   ```
+   ```bash
    AZOULA_HOST=192.168.1.100
    AZOULA_USERNAME=admin
    AZOULA_PASSWORD=your_password
