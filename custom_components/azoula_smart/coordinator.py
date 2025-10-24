@@ -38,7 +38,6 @@ class AzoulaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, DeviceType]]):
         self.hub.on_property_update = self._handle_device_property_update
 
     async def _async_update_data(self) -> dict[str, DeviceType]:
-        """Update device data."""
         try:
             devices = await self.hub.get_all_devices()
             device_dict = {device["device_id"]: device for device in devices}

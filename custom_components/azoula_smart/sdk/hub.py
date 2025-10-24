@@ -28,6 +28,8 @@ from .const import (
     METHOD_GET_ALL_DEVICES,
     METHOD_GET_ALL_DEVICES_REPLY,
     METHOD_PROPERTY_POST,
+    METHOD_SERVICE,
+    METHOD_SERVICE_REPLY,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
 )
@@ -94,6 +96,9 @@ class AzoulaSmartHub:
         self._on_online_status: Callable[[str, bool], None] | None = None
         self._on_device_status: Callable[[str, dict[str, Any]], None] | None = None
         self._on_property_update: Callable[[str, dict[str, Any]], None] | None = None
+        self._on_control_response: (
+            Callable[[str, str, int, dict[str, Any]], None] | None
+        ) = None
 
         # Device discovery state
         self._devices_received = asyncio.Event()
@@ -122,6 +127,27 @@ class AzoulaSmartHub:
     ) -> None:
         """Set device property update callback."""
         self._on_property_update = callback
+
+    @property
+    def on_control_response(
+        self,
+    ) -> Callable[[str, str, int, dict[str, Any]], None] | None:
+        """Get device control response callback."""
+        return self._on_control_response
+
+    @on_control_response.setter
+    def on_control_response(
+        self, callback: Callable[[str, str, int, dict[str, Any]], None] | None
+    ) -> None:
+        """Set device control response callback.
+
+        Callback parameters:
+        - message_id: The ID of the control command
+        - method: The control method used
+        - code: Response code (200 = success)
+        - data: Response data
+        """
+        self._on_control_response = callback
 
     def _on_connect(
         self,
@@ -214,6 +240,7 @@ class AzoulaSmartHub:
                 METHOD_DEVICE_ONLINE: self._handle_device_online,
                 METHOD_DEVICE_OFFLINE: self._handle_device_offline,
                 METHOD_PROPERTY_POST: self._handle_property_post,
+                METHOD_SERVICE_REPLY: self._handle_service_reply,
             }
 
             handler = command_handlers.get(method)
@@ -325,6 +352,25 @@ class AzoulaSmartHub:
         # Trigger property update callback
         if self._on_property_update:
             self._on_property_update(device_id, params)
+
+    def _handle_service_reply(self, payload: dict[str, Any]) -> None:
+        """Handle device property set response."""
+        message_id = payload.get("id", "")
+        code = payload.get("code", 0)
+        data = payload.get("data", {})
+        method = payload.get("method", METHOD_SERVICE_REPLY)
+
+        _LOGGER.debug(
+            "Gateway %s: Property set response - ID: %s, Code: %s, Data: %s",
+            self._gateway_id,
+            message_id,
+            code,
+            data,
+        )
+
+        # Trigger control response callback
+        if self._on_control_response:
+            self._on_control_response(message_id, method, code, data)
 
     async def connect(self) -> None:
         """Connect to the MQTT broker."""
@@ -446,3 +492,54 @@ class AzoulaSmartHub:
             len(self._devices_result),
         )
         return self._devices_result
+
+    async def call_device_service(
+        self,
+        device_id: str,
+        service_identifier: str,
+        params: dict[str, Any] | None = None,
+    ) -> str:
+        """Call a device service (e.g., turn on/off, toggle).
+
+        Args:
+            device_id: Target device ID
+            service_identifier: Service identifier (e.g., OnOffClusterOn, OnOffClusterOff)
+            params: Optional parameters for the service call
+
+        Returns:
+            str: Message ID for tracking the response
+
+        Example:
+            # Turn on a switch
+            message_id = await hub.call_device_service(
+                "device123", "OnOffClusterOn"
+            )
+
+            # Turn off a switch
+            message_id = await hub.call_device_service(
+                "device123", "OnOffClusterOff"
+            )
+        """
+        message_id = str(uuid.uuid4()).upper()
+        request_payload: dict[str, Any] = {
+            "id": message_id,
+            "version": "1.0",
+            "deviceID": device_id,
+            "identifier": service_identifier,
+            "params": params or {},
+            "userIdentifier": "HomeAssistant",
+            "method": METHOD_SERVICE,
+        }
+
+        # Log the request payload at debug level
+        _LOGGER.debug(
+            "Gateway %s: Sending service call '%s' to device %s with message ID %s: %s",
+            self._gateway_id,
+            service_identifier,
+            device_id,
+            message_id,
+            request_payload,
+        )
+
+        self._mqtt_client.publish(self._pub_topic, json.dumps(request_payload))
+        return message_id

@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import sys
-from typing import cast
+from typing import Any, cast
 
 from dotenv import load_dotenv
 
@@ -30,6 +30,27 @@ class AzoulaHubTester:
         self.gateway: AzoulaSmartHub | None = None
         self.is_connected = False
         self.device_processor = DeviceModelProcessor()
+        self.control_responses: list[dict[str, Any]] = []
+
+    def _control_response_callback(
+        self, message_id: str, method: str, code: int, data: dict[str, Any]
+    ) -> None:
+        """Handle control command responses."""
+        response_info: dict[str, Any] = {
+            "message_id": message_id,
+            "method": method,
+            "code": code,
+            "data": data,
+        }
+        self.control_responses.append(response_info)
+
+        _LOGGER.info(
+            "Control Response - ID: %s, Method: %s, Code: %s", message_id, method, code
+        )
+        if code == 200:
+            _LOGGER.info("✓ Control command succeeded!")
+        else:
+            _LOGGER.error("✗ Control command failed with code: %s", code)
 
     async def test_connection(
         self, host: str, username: str, password: str, gateway_id: str
@@ -46,6 +67,9 @@ class AzoulaHubTester:
                 password=password,
                 gateway_id=gateway_id,
             )
+
+            # Set up control response callback
+            self.gateway.on_control_response = self._control_response_callback
 
             await self.gateway.connect()
             self.is_connected = True
@@ -139,6 +163,106 @@ class AzoulaHubTester:
 
         return True
 
+    async def test_device_control(self, devices: list[DeviceType]) -> bool:
+        """Test device control functionality with simple on/off commands."""
+        if not self.gateway or not self.is_connected:
+            _LOGGER.warning("Not connected to any gateway")
+            return False
+
+        _LOGGER.info("=== Testing Device Control ===")
+
+        # Use the first available device for testing
+        test_device: DeviceType | None = None
+        for device in devices:
+            if device["online"] == "1":  # Find first online device
+                test_device = device
+                break
+
+        if not test_device:
+            _LOGGER.error("No online devices found for testing")
+            _LOGGER.info("Available devices:")
+            for device in devices:
+                _LOGGER.info(
+                    "  - %s (Type: %s, Online: %s)",
+                    device["device_id"],
+                    device["device_type"],
+                    device["online"],
+                )
+            return False
+
+        device_id = test_device["device_id"]
+        device_type = test_device["device_type"]
+        is_online = test_device["online"]
+        _LOGGER.info(
+            "Testing control with target device: %s (Type: %s, Online: %s)",
+            device_id,
+            device_type,
+            is_online,
+        )
+
+        # Clear previous responses
+        self.control_responses.clear()
+
+        try:
+            # Test 1: Turn device ON using service call
+            _LOGGER.info("Test 1: Turning device ON using service call...")
+            message_id_on = await self.gateway.call_device_service(
+                device_id, "OnOffClusterOn"
+            )
+            _LOGGER.info("Sent ON service call with message ID: %s", message_id_on)
+
+            # Wait for response
+            await asyncio.sleep(2)
+
+            # Test 2: Turn device OFF using service call
+            _LOGGER.info("Test 2: Turning device OFF using service call...")
+            message_id_off = await self.gateway.call_device_service(
+                device_id, "OnOffClusterOff"
+            )
+            _LOGGER.info("Sent OFF service call with message ID: %s", message_id_off)
+
+            # Wait for response
+            await asyncio.sleep(2)
+
+            # Test 3: Toggle device state using service call
+            _LOGGER.info("Test 3: Toggling device state using service call...")
+            message_id_toggle = await self.gateway.call_device_service(
+                device_id, "OnOffClusterToggle"
+            )
+            _LOGGER.info(
+                "Sent TOGGLE service call with message ID: %s", message_id_toggle
+            )
+
+            # Wait for response
+            await asyncio.sleep(2)
+
+            # Check responses
+            success_count = 0
+            for response in self.control_responses:
+                if response["code"] == 200:
+                    success_count += 1
+
+            _LOGGER.info(
+                "Control test completed: %d/%d commands succeeded",
+                success_count,
+                len(self.control_responses),
+            )
+
+            if (
+                success_count == len(self.control_responses)
+                and len(self.control_responses) > 0
+            ):
+                _LOGGER.info("✓ All device control commands succeeded!")
+                return True
+
+            _LOGGER.warning("Some device control commands failed")
+
+        except Exception:
+            _LOGGER.exception("Device control test error")
+            return False
+
+        return False
+
     async def test_disconnect(self) -> bool:
         """Test disconnect from gateway."""
         if not self.gateway or not self.is_connected:
@@ -221,9 +345,22 @@ async def main() -> bool:
             return False
 
         # Test device discovery
-        success = await tester.test_get_all_devices()
+        devices: list[DeviceType] = []
+        if success:
+            # Store devices for control testing
+            success = await tester.test_get_all_devices()
+            if success and tester.gateway:
+                # Get the devices that were discovered
+                devices = await tester.gateway.get_all_devices()
+
         if not success:
             _LOGGER.error("Device discovery test failed")
+
+        # Test device control (only if discovery was successful)
+        if success and devices:
+            control_success = await tester.test_device_control(devices)
+            if not control_success:
+                _LOGGER.warning("Device control test had issues, but continuing...")
 
         # Test disconnect
         success = await tester.test_disconnect()

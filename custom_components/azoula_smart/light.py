@@ -30,7 +30,6 @@ async def async_setup_entry(
     coordinator: AzoulaDataUpdateCoordinator = entry.runtime_data
     device_processor = DeviceModelProcessor()
 
-    # Create light entities for devices that should have them
     entities = [
         AzoulaLight(coordinator, device)
         for device in coordinator.data.values()

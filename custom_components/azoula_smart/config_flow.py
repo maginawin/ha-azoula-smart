@@ -34,10 +34,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     password = data[CONF_PASSWORD]
     gateway_id = data[CONF_ID]
 
-    # For now, we do basic validation
-    # In a real implementation, you might want to test MQTT connection
-    # but for simplicity, we'll just validate the format
-
     if not host or not host.strip():
         raise CannotConnect("Host cannot be empty")
 
@@ -50,7 +46,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     if not gateway_id or not gateway_id.strip():
         raise InvalidAuth("Gateway ID cannot be empty")
 
-    # Return info for the config entry
     return {"title": f"Azoula Smart Gateway ({host})"}
 
 
@@ -79,9 +74,6 @@ class AzoulaSmartConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors

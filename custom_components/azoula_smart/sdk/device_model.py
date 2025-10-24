@@ -63,7 +63,6 @@ class DeviceModelProcessor:
 
     def should_create_entity(self, device: DeviceType) -> bool:
         """Determine if we should create an entity for this device."""
-        # Only create entities for known device types that are online
         platform = self.get_platform_for_device(device)
         is_online = device["online"] == "1"
 
