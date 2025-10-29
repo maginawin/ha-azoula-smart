@@ -1,7 +1,7 @@
 {
   "name": "Azoula Smart",
   "content_in_root": false,
-  "filename": "azoula_smart.zip",
+  "filename": "sunricher_azoula_smart.zip",
   "hacs": "1.6.0",
   "homeassistant": "2024.4.1",
   "render_readme": true,

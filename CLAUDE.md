@@ -8,14 +8,14 @@ This is a Home Assistant custom integration for Azoula Smart Hub devices. It pro
 
 **Key Architecture Points:**
 
-- **Domain**: `azoula_smart`
+- **Domain**: `sunricher_azoula_smart`
 - **Communication**: Local MQTT broker on Azoula gateway (default port 1883)
 - **IoT Class**: `local_push` (local network communication)
 - **Current Status**: Bronze quality scale - foundational MQTT layer complete, device platforms not yet implemented
 
 ## Architecture Overview
 
-### MQTT Communication Layer (`custom_components/azoula_smart/sdk/`)
+### MQTT Communication Layer (`custom_components/sunricher_azoula_smart/sdk/`)
 
 The integration communicates with Azoula gateways via MQTT using a specific protocol:
 
