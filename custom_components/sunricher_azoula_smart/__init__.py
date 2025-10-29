@@ -16,7 +16,7 @@ from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
 from .types import AzoulaSmartConfigEntry, AzoulaSmartData
 
-_PLATFORMS: list[Platform] = [Platform.LIGHT]
+_PLATFORMS: list[Platform] = []
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
