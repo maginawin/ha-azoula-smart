@@ -13,30 +13,6 @@ This is a Home Assistant custom integration for Azoula Smart Hub devices. It pro
 - **IoT Class**: `local_push` (local network communication)
 - **Current Status**: Bronze quality scale - foundational MQTT layer complete, device platforms not yet implemented
 
-## Development Commands
-
-```bash
-# Install development dependencies
-pip install -e .[dev]
-
-# Linting and formatting
-ruff check .
-ruff format .
-
-# Type checking
-mypy .
-
-# SDK connection testing
-python script/test_all.py
-
-# With environment variables (preferred)
-cp .env.example .env  # Edit with your gateway details
-python script/test_all.py
-
-# With command line arguments
-python script/test_all.py --host 192.168.1.100 --username admin --password secret --gateway-id HUB001
-```
-
 ## Architecture Overview
 
 ### MQTT Communication Layer (`custom_components/azoula_smart/sdk/`)
@@ -74,32 +50,54 @@ The codebase handles both paho-mqtt < 2.0.0 and >= 2.0.0 API differences with dy
 **Device Platform Support:**
 Currently defined constants for 5 device types (switch, light, sensor, cover, climate) but no platform implementations exist yet. This is the main area for future development.
 
-## Development Environment Setup
+## Development Setup
 
-1. Configure environment variables in `.env`:
+### Virtual Environment
 
-   ```bash
-   AZOULA_HOST=192.168.1.100
-   AZOULA_USERNAME=admin
-   AZOULA_PASSWORD=your_password
-   AZOULA_GATEWAY_ID=your_gateway_id
-   ```
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+```
 
-2. The test script (`script/test_all.py`) validates SDK connection/disconnection functionality and is essential for testing MQTT communication without full HA setup.
+All development commands must run within activated virtual environment.
 
-## Code Quality Configuration
+### Development Commands
 
-- **Ruff**: Comprehensive linting with Google docstring convention, special handling for constants files
-- **MyPy**: Strict type checking targeting Python 3.13, special overrides for legacy components
-- **Pre-commit**: Configured for automated code quality checks
+```bash
+# Format and lint
+ruff format
+ruff check --fix
 
-## Current Development Status
+# Type check
+mypy --show-error-codes --pretty {project_path}
+```
 
-**Implemented:** MQTT communication layer, config flow, connection management, development tooling
+## Code Quality Guidelines
 
-**Missing:** Device platform implementations, device discovery, entity creation, comprehensive testing
+Follow Home Assistant's [Style Guidelines](https://developers.home-assistant.io/docs/development_guidelines/). Use Context7 MCP to query detailed documentation when needed.
 
-When adding new device platforms, follow the established pattern in `const.py` for device type mappings and ensure proper async/await patterns consistent with the hub implementation.
+### Key Rules
+
+- **Logging**: Use percentage formatting, not f-strings (`"Gateway %s connected"` not `f"Gateway {gw} connected"`)
+- **Comments**: Full sentences with periods. Comment non-obvious decisions, not obvious code
+- **Entity Attributes**: Use `_attr_*` pattern in `__init__`, avoid `@property` decorators
+- **Type Hints**: Required for all new code
+- **Error Handling**: Proper exception handling with appropriate logging
+
+### Resources
+
+- [Home Assistant Development Guidelines](https://developers.home-assistant.io/docs/development_guidelines/)
+- [Home Assistant Entity Architecture](https://developers.home-assistant.io/docs/core/entity/)
+- Use Context7 to query Home Assistant documentation for specific patterns
+
+## Development Principles
+
+- Use English in code, comments, and documentation
+- Code readability first: prefer self-documenting code over comments
+- Document design decisions and rationale for significant changes
+
+## Development Workflow
 
 ### Branch Naming Convention
 
@@ -111,26 +109,54 @@ When adding new device platforms, follow the established pattern in `const.py` f
 
 ### Commit Message Format
 
-Follow conventional commits format:
+Follow conventional commits format with **strong emphasis on brevity and clarity**:
 
 ```text
-type(scope): brief description
+type(scope): concise summary of what changed
 
-Detailed explanation of changes (if necessary)
-
-- Bullet points for multiple changes
-- Reference issue numbers (#123)
-- Breaking changes noted with BREAKING CHANGE:
+- Optional bullet point for key changes
+- Keep each point short and focused
+- Maximum 3-4 bullet points
 ```
+
+**Commit Types:**
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `refactor`: Code restructuring without behavior change
+- `docs`: Documentation changes
+- `test`: Test additions or modifications
+- `chore`: Maintenance tasks (dependencies, tooling, releases)
+
+**Key Principles: Be specific, concise, and focus on impact over details.**
+
+- Keep subject line under 72 characters
+- Use imperative mood: "add feature" not "added feature"
+- Omit obvious details: diff shows "what", commit explains "why"
+- Use 3-4 bullet points maximum if body is needed
+
+**IMPORTANT: No Claude Code signatures, co-author attributions, or AI-generated markers in commit messages.**
 
 **Examples:**
 
-- `feat(gateway): add support for Azoula device groups`
-- `fix(sensor): correct energy sensor precision`
-- `docs(readme): update installation instructions`
-- `chore(release): bump version to 0.2.0`
+```text
+# Good
+feat(gateway): add group control support
+fix(sensor): correct energy calculation overflow
+refactor: move register_listener to entity objects
+chore(release): bump version to 0.2.0
 
-**IMPORTANT**: Do not include Claude Code signatures, co-author attributions, or AI-generated markers in commit messages. Keep commits clean and focused on the technical changes.
+# Good with body
+refactor: move register_listener to entity objects
+
+- Add register_listener() to Device/Group/Scene in SDK
+- Remove gateway parameter from integration entities
+- Simplify all-light creation from 14 lines to 1 line
+
+# Bad - too vague
+refactor: cleanup
+fix: bug fixes
+```
 
 ### Pull Request Process
 
@@ -141,18 +167,19 @@ Detailed explanation of changes (if necessary)
 
 ### Release Process
 
-1. **Update version** in `manifest.json`
+1. **Update version** in `manifest.json` and `pyproject.toml`
 2. **Update CHANGELOG.md** with release notes:
    - Use simplified structure: Added, Fixed, Technical
    - Include issue references (#123) for user-facing changes
    - Include commit hashes (abc1234) for technical changes without issues
    - Follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format
    - Update version links at bottom of changelog
-3. **Commit changes** to main branch using format: `chore(release): bump version to x.y.z`
-4. **Create and push tag** to upstream: `git tag v{version} && git push upstream v{version}`
-5. **Create GitHub release** using `gh release create v{version} --title "v{version}" --notes "..."`
-   - Copy release notes from CHANGELOG.md with same structure (Added, Fixed, Technical sections)
-6. **Follow semantic versioning**: MAJOR.MINOR.PATCH
+3. **Commit changes** to main branch: `chore(release): bump version to x.y.z`
+4. **Create and push tag**: `git tag v{version} && git push upstream v{version}`
+5. **Create GitHub release**: `gh release create v{version} -R {owner}/{repo} --title "v{version}" --notes "..."`
+   - Copy release notes from CHANGELOG.md with same structure
+6. **Push to all remote repositories** if using multiple remotes
+7. **Follow semantic versioning**: MAJOR.MINOR.PATCH
 
 #### Changelog Structure Template
 
@@ -162,18 +189,9 @@ Detailed explanation of changes (if necessary)
 ### Added
 - New user-facing features
 
-### Fixed  
+### Fixed
 - Important bug fixes (#issue)
 
 ### Technical
 - Dependency updates, CI/CD improvements, code refactoring
 ```
-
-### Code Quality Requirements
-
-- **Type hints**: All new code must include proper type annotations
-- **Error handling**: Use proper exception handling with logging
-- **Documentation**: Add docstrings for all public methods and classes
-- **Constants**: Define constants in separate constants file
-- **Testing**: Write unit tests for all new functionality
-- **Architecture Documentation**: Document significant design decisions and alternatives considered
