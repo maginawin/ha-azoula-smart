@@ -96,7 +96,7 @@ max-complexity = 25
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"custom_components/azoula_smart/const.py" = [
+"custom_components/sunricher_azoula_smart/const.py" = [
     "D", # pydocstyle  
 ]
 
@@ -135,7 +135,7 @@ warn_return_any = true
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = "custom_components.azoula_smart.*"
+module = "custom_components.sunricher_azoula_smart.*"
 check_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_subclassing_any = false

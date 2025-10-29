@@ -1,4 +1,4 @@
-"""Config flow for the Azoula Smart integration."""
+"""Config flow for the Azoula Smart Hub integration."""
 
 from __future__ import annotations
 
@@ -11,46 +11,46 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_ID, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN
+from .sdk.exceptions import AzoulaGatewayError
+from .sdk.gateway import AzoulaGateway
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-        vol.Required(CONF_ID): cv.string,
+        vol.Required(CONF_HOST): str,
+        vol.Required(CONF_ID): str,
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
     }
 )
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect to MQTT broker."""
-    host = data[CONF_HOST]
-    username = data[CONF_USERNAME]
-    password = data[CONF_PASSWORD]
-    gateway_id = data[CONF_ID]
+    """Validate the user input allows us to connect.
 
-    if not host or not host.strip():
-        raise CannotConnect("Host cannot be empty")
+    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    """
+    gateway = AzoulaGateway(
+        data[CONF_HOST],
+        data[CONF_USERNAME],
+        data[CONF_PASSWORD],
+        data[CONF_ID],
+    )
 
-    if not username or not username.strip():
-        raise InvalidAuth("Username cannot be empty")
+    try:
+        await gateway.connect()
+        await gateway.disconnect()
+    except AzoulaGatewayError as err:
+        raise CannotConnect from err
 
-    if not password or not password.strip():
-        raise InvalidAuth("Password cannot be empty")
-
-    if not gateway_id or not gateway_id.strip():
-        raise InvalidAuth("Gateway ID cannot be empty")
-
-    return {"title": f"Azoula Smart Gateway ({host})"}
+    return {"title": f"Azoula Gateway {data[CONF_ID]}"}
 
 
 class AzoulaSmartConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Azoula Smart."""
+    """Handle a config flow for Azoula Smart Hub."""
 
     VERSION = 1
 
@@ -62,18 +62,17 @@ class AzoulaSmartConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
-
-                # Create unique ID based on host to prevent duplicates
-                unique_id = user_input[CONF_HOST]
-                await self.async_set_unique_id(unique_id)
-                self._abort_if_unique_id_configured()
-
-                return self.async_create_entry(title=info["title"], data=user_input)
-
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
+            except Exception:
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+            else:
+                await self.async_set_unique_id(user_input[CONF_ID])
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors

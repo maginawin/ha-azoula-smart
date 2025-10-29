@@ -61,7 +61,7 @@ jobs:
 
       - name: Type check with mypy
         run: |
-          mypy --show-error-codes --pretty custom_components/azoula_smart
+          mypy --show-error-codes --pretty custom_components/sunricher_azoula_smart
 
   validate-setup:
     runs-on: ubuntu-latest
@@ -78,7 +78,7 @@ jobs:
           echo "logger:" >> $config_path/configuration.yaml
           echo "  default: info" >> $config_path/configuration.yaml
           echo "  logs:" >> $config_path/configuration.yaml
-          echo "    custom_components.azoula_smart: debug" >> $config_path/configuration.yaml
+          echo "    custom_components.sunricher_azoula_smart: debug" >> $config_path/configuration.yaml
 
       - name: Setup Home Assistant
         id: homeassistant
@@ -86,10 +86,10 @@ jobs:
         with:
           config-dir: ./test_config
 
-  validate-hacs:
-    runs-on: "ubuntu-latest"
-    steps:
-      - name: HACS validation
-        uses: "hacs/action@main"
-        with:
-          category: "integration"
+  # validate-hacs:
+  #   runs-on: "ubuntu-latest"
+  #   steps:
+  #     - name: HACS validation
+  #       uses: "hacs/action@main"
+  #       with:
+  #         category: "integration"

@@ -16,14 +16,14 @@ jobs:
 
       - name: ZIP Component Dir
         run: |
-          cd ${{ github.workspace }}/custom_components/azoula_smart
-          zip -r azoula_smart.zip ./
+          cd ${{ github.workspace }}/custom_components/sunricher_azoula_smart
+          zip -r sunricher_azoula_smart.zip ./
 
       - name: Upload zip to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/azoula_smart/azoula_smart.zip
-          asset_name: azoula_smart.zip
+          file: ${{ github.workspace }}/custom_components/sunricher_azoula_smart/sunricher_azoula_smart.zip
+          asset_name: sunricher_azoula_smart.zip
           tag: ${{ github.ref }}
           overwrite: true
