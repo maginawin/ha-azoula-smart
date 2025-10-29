@@ -95,6 +95,7 @@ Follow Home Assistant's [Style Guidelines](https://developers.home-assistant.io/
 
 - **Code Language**: Use English in code, comments, and documentation files
 - **Communication Language**: When communicating with the user/developer, use **Chinese (中文)** as the primary language
+- **Incremental Development**: Propose each code change and get user approval before implementing. Present plan first, then modify one section at a time.
 - Code readability first: prefer self-documenting code over comments
 - Document design decisions and rationale for significant changes
 

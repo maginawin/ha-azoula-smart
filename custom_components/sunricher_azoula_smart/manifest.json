@@ -1,0 +1,16 @@
+{
+  "domain": "sunricher_azoula_smart",
+  "name": "Azoula Smart Hub",
+  "codeowners": [
+    "@niracler"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/sunricher_azoula_smart",
+  "homekit": {},
+  "iot_class": "local_push",
+  "quality_scale": "bronze",
+  "requirements": ["paho-mqtt>=1.6.0"],
+  "ssdp": [],
+  "zeroconf": []
+}
