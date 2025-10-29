@@ -32,7 +32,7 @@ The integration communicates with Azoula gateways via MQTT using a specific prot
 
 **SDK Components:**
 
-- `hub.py` - Main `AzoulaSmartHub` class with async MQTT handling
+- `hub.py` - Main `AzoulaGateway` class with async MQTT handling
 - `const.py` - Protocol constants, MQTT topics, device type mappings
 - `exceptions.py` - Custom exception classes
 
@@ -93,7 +93,8 @@ Follow Home Assistant's [Style Guidelines](https://developers.home-assistant.io/
 
 ## Development Principles
 
-- Use English in code, comments, and documentation
+- **Code Language**: Use English in code, comments, and documentation files
+- **Communication Language**: When communicating with the user/developer, use **Chinese (中文)** as the primary language
 - Code readability first: prefer self-documenting code over comments
 - Document design decisions and rationale for significant changes
 
