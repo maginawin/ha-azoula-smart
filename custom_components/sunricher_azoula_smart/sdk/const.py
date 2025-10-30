@@ -19,3 +19,9 @@ class CallbackEventType(Enum):
     """Gateway callback event types for listener registration."""
 
     ONLINE_STATUS = "online_status"
+
+
+class DeviceType(Enum):
+    """Device type classification."""
+
+    LIGHT = "light"

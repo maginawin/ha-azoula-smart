@@ -22,6 +22,7 @@ sys.path.insert(0, str(project_root))
 
 from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
     CallbackEventType,
+    DeviceType,
 )
 from custom_components.sunricher_azoula_smart.sdk.gateway import (  # noqa: E402
     AzoulaGateway,
@@ -180,16 +181,17 @@ class GatewayTester:
         try:
             _LOGGER.info("Discovering devices from gateway %s...", self.gateway_id)
 
-            devices = await self.gateway.discover_devices()
+            devices_dict = await self.gateway.discover_devices()
 
-            _LOGGER.info("Found %d devices:", len(devices))
-            for device in devices:
-                online_status = "online" if device.online else "offline"
+            lights = devices_dict.get(DeviceType.LIGHT, [])
+            _LOGGER.info("Found %d light(s):", len(lights))
+            for light in lights:
+                online_status = "online" if light.online else "offline"
                 _LOGGER.info(
                     "  - %s (%s) [%s] - %s",
-                    device.device_id,
-                    device.product_id,
-                    device.protocol,
+                    light.device_id,
+                    light.product_id,
+                    light.protocol,
                     online_status,
                 )
 

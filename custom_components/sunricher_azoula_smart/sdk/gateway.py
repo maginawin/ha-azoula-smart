@@ -27,9 +27,10 @@ from .const import (
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
     CallbackEventType,
+    DeviceType,
 )
-from .device import Device
 from .exceptions import AzoulaGatewayError
+from .light import Light
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._devices_result: list[Device] = []
+        self._devices_result: dict[DeviceType, list[Light]] = {}
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -243,10 +244,10 @@ class AzoulaGateway:
         else:
             _LOGGER.debug("Unhandled method %s from gateway %s", method, self._id)
 
-    async def discover_devices(self) -> list[Device]:
+    async def discover_devices(self) -> dict[DeviceType, list[Light]]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
-        self._devices_result.clear()
+        self._devices_result = {DeviceType.LIGHT: []}
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -290,10 +291,14 @@ class AzoulaGateway:
         data = payload.get("data", {})
         device_list = data.get("deviceList", [])
 
+        lights = self._devices_result[DeviceType.LIGHT]
         for device_data in device_list:
-            device = Device.from_dict(device_data)
-            if not any(d.unique_id == device.unique_id for d in self._devices_result):
-                self._devices_result.append(device)
+            if not Light.is_light_device(device_data):
+                continue
+
+            light = Light.from_dict(device_data)
+            if not any(d.unique_id == light.unique_id for d in lights):
+                lights.append(light)
 
         self._current_page = current_page
 

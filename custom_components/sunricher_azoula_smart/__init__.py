@@ -12,11 +12,12 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
+from .sdk.const import DeviceType
 from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
 from .types import AzoulaSmartConfigEntry, AzoulaSmartData
 
-_PLATFORMS: list[Platform] = []
+_PLATFORMS: list[Platform] = [Platform.LIGHT]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
@@ -35,7 +36,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
             f"Failed to connect to gateway {entry.data[CONF_ID]}"
         ) from err
 
-    entry.runtime_data = AzoulaSmartData(gateway=gateway)
+    devices = await gateway.discover_devices()
+
+    entry.runtime_data = AzoulaSmartData(
+        gateway=gateway,
+        lights=devices[DeviceType.LIGHT],
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
