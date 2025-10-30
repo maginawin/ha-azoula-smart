@@ -17,6 +17,11 @@ class Light:
     online: bool
     protocol: str
 
+    # Device state (updated from thing.event.property.post)
+    is_on: bool = False
+    brightness: int | None = None  # 0-254
+    color_temp: int | None = None  # Kelvin
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Light:
         """Create Light instance from protocol response dictionary."""

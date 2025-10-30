@@ -21,11 +21,16 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
+    SERVICE_ONOFF_OFF,
+    SERVICE_ONOFF_ON,
     CallbackEventType,
     DeviceType,
 )
 from custom_components.sunricher_azoula_smart.sdk.gateway import (  # noqa: E402
     AzoulaGateway,
+)
+from custom_components.sunricher_azoula_smart.sdk.types import (  # noqa: E402
+    PropertyParams,
 )
 
 logging.basicConfig(
@@ -53,12 +58,18 @@ class GatewayTester:
         self.gateway_id = gateway_id
         self.gateway: AzoulaGateway | None = None
         self.online_status_events: list[tuple[str, bool]] = []
+        self.property_update_events: list[tuple[str, PropertyParams]] = []
 
     def _on_online_status(self, dev_id: str, is_online: bool) -> None:
         """Callback for online status changes."""
         status = "online" if is_online else "offline"
         _LOGGER.info("Gateway %s is now %s", dev_id, status)
         self.online_status_events.append((dev_id, is_online))
+
+    def _on_property_update(self, dev_id: str, params: PropertyParams) -> None:
+        """Callback for property updates."""
+        _LOGGER.info("Property update for device %s: %s", dev_id, params)
+        self.property_update_events.append((dev_id, params))
 
     async def test_connection(self) -> bool:
         """Test connecting to the gateway."""
@@ -74,10 +85,14 @@ class GatewayTester:
                 gateway_id=self.gateway_id,
             )
 
-            # Register callback before connecting
+            # Register callbacks before connecting
             self.gateway.register_listener(
                 CallbackEventType.ONLINE_STATUS,
                 self._on_online_status,
+            )
+            self.gateway.register_listener(
+                CallbackEventType.PROPERTY_UPDATE,
+                self._on_property_update,
             )
 
             _LOGGER.info(
@@ -202,6 +217,63 @@ class GatewayTester:
             _LOGGER.info("✓ Device discovery test PASSED")
             return True
 
+    async def test_light_control(self) -> bool:
+        """Test light control via service invocation."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 5: Light Control Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Light control test FAILED: No gateway instance")
+            return False
+
+        try:
+            # First discover devices to get a light
+            devices_dict = await self.gateway.discover_devices()
+            lights = devices_dict.get(DeviceType.LIGHT, [])
+
+            if not lights:
+                _LOGGER.warning("No lights found, skipping light control test")
+                return True
+
+            # Use the first light for testing
+            test_light = lights[0]
+            _LOGGER.info(
+                "Testing with light: %s (%s)",
+                test_light.device_id,
+                test_light.product_id,
+            )
+
+            # Clear previous property update events
+            initial_events_count = len(self.property_update_events)
+
+            # Test turning on
+            _LOGGER.info("Turning light ON...")
+            await self.gateway.invoke_service(
+                test_light.device_id,
+                SERVICE_ONOFF_ON,
+            )
+            await asyncio.sleep(2)
+
+            # Test turning off
+            _LOGGER.info("Turning light OFF...")
+            await self.gateway.invoke_service(
+                test_light.device_id,
+                SERVICE_ONOFF_OFF,
+            )
+            await asyncio.sleep(2)
+
+            # Check if we received property updates
+            new_events = len(self.property_update_events) - initial_events_count
+            _LOGGER.info("Received %d property update(s) during test", new_events)
+
+        except Exception:
+            _LOGGER.exception("✗ Light control test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Light control test PASSED")
+            return True
+
     async def run_all_tests(self) -> None:
         """Run all connection tests."""
         _LOGGER.info("Starting Azoula Gateway Connection Tests")
@@ -232,6 +304,10 @@ class GatewayTester:
             result = await self.test_device_discovery()
             results.append(("Device Discovery", result))
 
+            # Test 5: Light Control
+            result = await self.test_light_control()
+            results.append(("Light Control", result))
+
         finally:
             # Cleanup
             if self.gateway:
@@ -256,6 +332,9 @@ class GatewayTester:
             _LOGGER.info("Total: %d/%d tests passed", passed, total)
             _LOGGER.info(
                 "Online status events received: %d", len(self.online_status_events)
+            )
+            _LOGGER.info(
+                "Property update events received: %d", len(self.property_update_events)
             )
 
 

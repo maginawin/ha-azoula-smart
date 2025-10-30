@@ -24,6 +24,9 @@ from .const import (
     DEFAULT_MQTT_PORT,
     METHOD_DEVICE_DISCOVER,
     METHOD_DEVICE_DISCOVER_REPLY,
+    METHOD_PROPERTY_POST,
+    METHOD_SERVICE_INVOKE,
+    METHOD_SERVICE_INVOKE_REPLY,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
     CallbackEventType,
@@ -31,6 +34,7 @@ from .const import (
 )
 from .exceptions import AzoulaGatewayError
 from .light import Light
+from .types import PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,6 +84,7 @@ class AzoulaGateway:
         # Multi-listener support
         self._listeners: dict[CallbackEventType, list[Callable[..., None]]] = {
             CallbackEventType.ONLINE_STATUS: [],
+            CallbackEventType.PROPERTY_UPDATE: [],
         }
         self._background_tasks: set[asyncio.Task[None]] = set()
 
@@ -92,7 +97,7 @@ class AzoulaGateway:
     def register_listener(
         self,
         event_type: CallbackEventType,
-        listener: Callable[[str, bool], None],
+        listener: Callable[[str, bool], None] | Callable[[str, PropertyParams], None],
     ) -> Callable[[], None]:
         """Register a listener for a specific event type."""
         if event_type not in self._listeners:
@@ -106,7 +111,7 @@ class AzoulaGateway:
         self,
         event_type: CallbackEventType,
         dev_id: str,
-        data: bool,
+        data: bool | PropertyParams,
     ) -> None:
         """Notify all registered listeners for a specific event type."""
         for listener in self._listeners.get(event_type, []):
@@ -236,6 +241,8 @@ class AzoulaGateway:
 
         method_handlers: dict[str, Callable[[dict[str, Any]], None]] = {
             METHOD_DEVICE_DISCOVER_REPLY: self._handle_device_discover_response,
+            METHOD_PROPERTY_POST: self._handle_property_post,
+            METHOD_SERVICE_INVOKE_REPLY: self._handle_service_reply,
         }
 
         handler = method_handlers.get(method)
@@ -275,6 +282,34 @@ class AzoulaGateway:
 
         return self._devices_result.copy()
 
+    async def invoke_service(
+        self,
+        device_id: str,
+        service_identifier: str,
+        params: dict[str, Any] | None = None,
+    ) -> None:
+        """Invoke a device service (thing.service)."""
+        request_payload: dict[str, Any] = {
+            "id": str(uuid.uuid4()),
+            "deviceID": device_id,
+            "method": METHOD_SERVICE_INVOKE,
+            "identifier": service_identifier,
+            "params": params if params is not None else {},
+        }
+
+        self._mqtt_client.publish(
+            self._pub_topic,
+            json.dumps(request_payload),
+        )
+
+        _LOGGER.debug(
+            "Invoked service %s for device %s with params %s on gateway %s",
+            service_identifier,
+            device_id,
+            params,
+            self._id,
+        )
+
     def _handle_device_discover_response(self, payload: dict[str, Any]) -> None:
         """Handle device discovery response with pagination support."""
         if payload.get("code") != 200:
@@ -305,3 +340,38 @@ class AzoulaGateway:
         if current_page >= page_count:
             if self._devices_received:
                 self._devices_received.set()
+
+    def _handle_property_post(self, payload: dict[str, Any]) -> None:
+        """Handle property post message (thing.event.property.post)."""
+        device_id = payload.get("deviceID")
+        params = payload.get("params", {})
+
+        if not device_id:
+            return
+
+        _LOGGER.debug(
+            "Property update for device %s on gateway %s: %s",
+            device_id,
+            self._id,
+            params,
+        )
+
+        # Notify listeners about property update
+        self._notify_listeners(
+            CallbackEventType.PROPERTY_UPDATE,
+            device_id,
+            params,
+        )
+
+    def _handle_service_reply(self, payload: dict[str, Any]) -> None:
+        """Handle service invocation reply (thing.service.reply)."""
+        code = payload.get("code", 0)
+        request_id = payload.get("id")
+
+        if code != 200:
+            _LOGGER.warning(
+                "Service invocation failed on gateway %s: code=%s, id=%s",
+                self._id,
+                code,
+                request_id,
+            )
