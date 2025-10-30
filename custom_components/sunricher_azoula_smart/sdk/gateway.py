@@ -7,6 +7,7 @@ from collections.abc import Callable
 import json
 import logging
 from typing import Any
+import uuid
 
 import paho.mqtt.client as paho_mqtt
 
@@ -19,11 +20,15 @@ except ImportError:
     HAS_CALLBACK_API_VERSION = False  # pyright: ignore[reportConstantRedefinition]
 
 from .const import (
+    DEFAULT_DISCOVERY_TIMEOUT,
     DEFAULT_MQTT_PORT,
+    METHOD_DEVICE_DISCOVER,
+    METHOD_DEVICE_DISCOVER_REPLY,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
     CallbackEventType,
 )
+from .device import Device
 from .exceptions import AzoulaGatewayError
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,17 +50,20 @@ class AzoulaGateway:
         self._sub_topic = f"{TOPIC_PLATFORM_APP_PREFIX}/{self._id}"
         self._pub_topic = f"{TOPIC_GATEWAY_PREFIX}/{self._id}"
 
+        # Generate unique client_id to avoid conflicts
+        client_id = f"ha_azoula_{self._id}_{uuid.uuid4().hex[:8]}"
+
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
             self._mqtt_client = paho_mqtt.Client(
                 CallbackAPIVersion.VERSION2,  # pyright: ignore[reportPossiblyUnboundVariable]
-                client_id=f"ha_dali_center_{self._id}",
+                client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
         else:
             # paho-mqtt < 2.0.0
             self._mqtt_client = paho_mqtt.Client(
-                client_id=f"ha_dali_center_{self._id}",
+                client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
 
@@ -73,6 +81,12 @@ class AzoulaGateway:
             CallbackEventType.ONLINE_STATUS: [],
         }
         self._background_tasks: set[asyncio.Task[None]] = set()
+
+        # Device discovery state
+        self._devices_result: list[Device] = []
+        self._devices_received: asyncio.Event | None = None
+        self._expected_page_count: int = 0
+        self._current_page: int = 0
 
     def register_listener(
         self,
@@ -211,18 +225,78 @@ class AzoulaGateway:
             payload_json,
         )
 
-        cmd = payload_json.get("cmd")
-        if not cmd:
+        method = payload_json.get("method")
+        if not method:
             _LOGGER.debug(
-                "Received MQTT message without cmd field from gateway %s",
+                "Received MQTT message without method field from gateway %s",
                 self._id,
             )
             return
 
-        command_handlers: dict[str, Callable[[dict[str, Any]], None]] = {}
+        method_handlers: dict[str, Callable[[dict[str, Any]], None]] = {
+            METHOD_DEVICE_DISCOVER_REPLY: self._handle_device_discover_response,
+        }
 
-        handler = command_handlers.get(cmd)
+        handler = method_handlers.get(method)
         if handler:
             handler(payload_json)
         else:
-            _LOGGER.debug("Unhandled command %s from gateway %s", cmd, self._id)
+            _LOGGER.debug("Unhandled method %s from gateway %s", method, self._id)
+
+    async def discover_devices(self) -> list[Device]:
+        """Discover all sub-devices under the gateway."""
+        self._devices_received = asyncio.Event()
+        self._devices_result.clear()
+        self._expected_page_count = 0
+        self._current_page = 0
+
+        request_payload = {
+            "id": str(uuid.uuid4()),
+            "deviceID": self._id,
+            "method": METHOD_DEVICE_DISCOVER,
+        }
+
+        self._mqtt_client.publish(
+            self._pub_topic,
+            json.dumps(request_payload),
+        )
+
+        try:
+            await asyncio.wait_for(
+                self._devices_received.wait(),
+                timeout=DEFAULT_DISCOVERY_TIMEOUT,
+            )
+        except TimeoutError:
+            _LOGGER.warning(
+                "Device discovery timeout for gateway %s",
+                self._id,
+            )
+
+        return self._devices_result.copy()
+
+    def _handle_device_discover_response(self, payload: dict[str, Any]) -> None:
+        """Handle device discovery response with pagination support."""
+        if payload.get("code") != 200:
+            if self._devices_received:
+                self._devices_received.set()
+            return
+
+        page_count = payload.get("PageCount", 1)
+        current_page = payload.get("CurrentPage", 1)
+
+        if self._expected_page_count == 0:
+            self._expected_page_count = page_count
+
+        data = payload.get("data", {})
+        device_list = data.get("deviceList", [])
+
+        for device_data in device_list:
+            device = Device.from_dict(device_data)
+            if not any(d.unique_id == device.unique_id for d in self._devices_result):
+                self._devices_result.append(device)
+
+        self._current_page = current_page
+
+        if current_page >= page_count:
+            if self._devices_received:
+                self._devices_received.set()
