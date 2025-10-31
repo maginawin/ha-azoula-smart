@@ -23,4 +23,5 @@ class PropertyParams(TypedDict, total=False):
     CurrentX: PropertyValue  # CIE 1931 color space X coordinate
     CurrentY: PropertyValue  # CIE 1931 color space Y coordinate
 
+
 ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]

@@ -23,6 +23,7 @@ SERVICE_ONOFF_OFF = "OnOffClusterOff"
 SERVICE_ONOFF_TOGGLE = "OnOffClusterToggle"
 SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF = "LevelControlClusterMoveToLevelWithOnOff"
 SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP = "ControlClusterMoveToColorTemperature"
+SERVICE_COLOR_MOVE_TO_COLOR = "ControlClusterMoveToColor"
 
 
 class CallbackEventType(Enum):

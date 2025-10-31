@@ -9,6 +9,7 @@ from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
     ATTR_RGB_COLOR,
+    ATTR_XY_COLOR,
     LightEntity,
 )
 from homeassistant.components.light.const import ColorMode
@@ -17,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .sdk.const import (
+    SERVICE_COLOR_MOVE_TO_COLOR,
     SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
     SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
     SERVICE_ONOFF_OFF,
@@ -55,6 +57,7 @@ class AzoulaLight(LightEntity):
     _attr_color_mode: ColorMode | str | None = None
     _attr_color_temp_kelvin: int | None = None
     _attr_rgb_color: tuple[int, int, int] | None = None
+    _attr_xy_color: tuple[float, float] | None = None
     _attr_max_color_temp_kelvin = 6250
     _attr_min_color_temp_kelvin = 2222
 
@@ -80,15 +83,15 @@ class AzoulaLight(LightEntity):
         supported_modes: set[ColorMode] = set()
 
         if "RGBCCT" in self._light.product_id:
-            supported_modes.add(ColorMode.RGB)
+            supported_modes.add(ColorMode.XY)
             supported_modes.add(ColorMode.COLOR_TEMP)
-            self._attr_color_mode = ColorMode.RGB
+            self._attr_color_mode = ColorMode.XY
         elif "CCT" in self._light.product_id:
             supported_modes.add(ColorMode.COLOR_TEMP)
             self._attr_color_mode = ColorMode.COLOR_TEMP
         elif "RGB" in self._light.product_id:
-            supported_modes.add(ColorMode.RGB)
-            self._attr_color_mode = ColorMode.RGB
+            supported_modes.add(ColorMode.XY)
+            self._attr_color_mode = ColorMode.XY
         else:
             supported_modes.add(ColorMode.BRIGHTNESS)
             self._attr_color_mode = ColorMode.BRIGHTNESS
@@ -100,13 +103,15 @@ class AzoulaLight(LightEntity):
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         color_temp_kelvin = kwargs.get(ATTR_COLOR_TEMP_KELVIN)
         rgb_color = kwargs.get(ATTR_RGB_COLOR)
+        xy_color = kwargs.get(ATTR_XY_COLOR)
 
         _LOGGER.debug(
-            "Turning on light %s: brightness=%s, color_temp=%s, rgb=%s",
+            "Turning on light %s: brightness=%s, color_temp=%s, rgb=%s, xy=%s",
             self._light.device_id,
             brightness,
             color_temp_kelvin,
             rgb_color,
+            xy_color,
         )
 
         service_invoked = False
@@ -128,6 +133,22 @@ class AzoulaLight(LightEntity):
             await self._gateway.invoke_service(
                 self._light.device_id,
                 SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
+                params,
+            )
+            service_invoked = True
+
+        if xy_color is not None:
+            color_x, color_y = xy_color
+            clamped_x = max(0.0, min(0.996, float(color_x)))
+            clamped_y = max(0.0, min(0.996, float(color_y)))
+            params: dict[str, Any] = {
+                "ColorX": round(clamped_x, 3),
+                "ColorY": round(clamped_y, 3),
+                "TransitionTime": 10,
+            }
+            await self._gateway.invoke_service(
+                self._light.device_id,
+                SERVICE_COLOR_MOVE_TO_COLOR,
                 params,
             )
             service_invoked = True
@@ -188,9 +209,20 @@ class AzoulaLight(LightEntity):
 
         if "CurrentLevel" in status:
             self._attr_brightness = int(status["CurrentLevel"]["value"] * 254 / 100)
+            self._attr_color_mode = ColorMode.BRIGHTNESS
 
         if "ColorTemperature" in status:
             self._attr_color_temp_kelvin = int(status["ColorTemperature"]["value"])
+            self._attr_color_mode = ColorMode.COLOR_TEMP
+
+        current_x = status.get("CurrentX")
+        current_y = status.get("CurrentY")
+        if current_x is not None or current_y is not None:
+            x_value = float(current_x["value"]) if current_x is not None else None
+            y_value = float(current_y["value"]) if current_y is not None else None
+            if x_value is not None and y_value is not None:
+                self._attr_xy_color = (x_value, y_value)
+                self._attr_color_mode = ColorMode.XY
 
         self.schedule_update_ha_state()
 
