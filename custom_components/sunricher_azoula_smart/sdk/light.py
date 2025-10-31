@@ -10,12 +10,14 @@ from typing import Any
 class Light:
     """Represents a light device under the Azoula gateway."""
 
+    name: str
     device_id: str
     profile: str
     device_type: str
     product_id: str
     online: bool
     protocol: str
+    manufacturer: str
 
     # Device state (updated from thing.event.property.post)
     is_on: bool = False
@@ -26,12 +28,14 @@ class Light:
     def from_dict(cls, data: dict[str, Any]) -> Light:
         """Create Light instance from protocol response dictionary."""
         return cls(
+            name=data["config"]["name"],
             device_id=data["deviceID"],
             profile=data["profile"],
             device_type=data["deviceType"],
             product_id=data["productId"],
             online=data["online"] == "1",
             protocol=data["protocol"],
+            manufacturer=data["manufacturer"],
         )
 
     @property

@@ -11,7 +11,9 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 
+from .const import DOMAIN, MANUFACTURER
 from .sdk.const import DeviceType
 from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
@@ -35,6 +37,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         raise ConfigEntryNotReady(
             f"Failed to connect to gateway {entry.data[CONF_ID]}"
         ) from err
+
+    dev_reg = dr.async_get(hass)
+    dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, gateway.gateway_id)},
+        manufacturer=MANUFACTURER,
+        name=gateway.gateway_id,
+        serial_number=gateway.gateway_id,
+    )
 
     devices = await gateway.discover_devices()
 

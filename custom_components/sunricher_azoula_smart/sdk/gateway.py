@@ -34,7 +34,7 @@ from .const import (
 )
 from .exceptions import AzoulaGatewayError
 from .light import Light
-from .types import PropertyParams
+from .types import ListenerCallback, PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,17 +46,17 @@ class AzoulaGateway:
         self, host: str, username: str, password: str, gateway_id: str
     ) -> None:
         """Initialize the API client."""
+        self.gateway_id = gateway_id
         self._host = host
         self._port = DEFAULT_MQTT_PORT
         self._username = username
         self._password = password
-        self._id = gateway_id
 
-        self._sub_topic = f"{TOPIC_PLATFORM_APP_PREFIX}/{self._id}"
-        self._pub_topic = f"{TOPIC_GATEWAY_PREFIX}/{self._id}"
+        self._sub_topic = f"{TOPIC_PLATFORM_APP_PREFIX}/{self.gateway_id}"
+        self._pub_topic = f"{TOPIC_GATEWAY_PREFIX}/{self.gateway_id}"
 
         # Generate unique client_id to avoid conflicts
-        client_id = f"ha_azoula_{self._id}_{uuid.uuid4().hex[:8]}"
+        client_id = f"ha_azoula_{self.gateway_id}_{uuid.uuid4().hex[:8]}"
 
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
@@ -97,7 +97,7 @@ class AzoulaGateway:
     def register_listener(
         self,
         event_type: CallbackEventType,
-        listener: Callable[[str, bool], None] | Callable[[str, PropertyParams], None],
+        listener: ListenerCallback,
     ) -> Callable[[], None]:
         """Register a listener for a specific event type."""
         if event_type not in self._listeners:
@@ -133,14 +133,14 @@ class AzoulaGateway:
             self._mqtt_client.loop_start()
             await asyncio.wait_for(self._connection_event.wait(), timeout=10)
         except TimeoutError as err:
-            raise AzoulaGatewayError("Connection timeout", self._id) from err
+            raise AzoulaGatewayError("Connection timeout", self.gateway_id) from err
         except (ConnectionRefusedError, OSError) as err:
-            raise AzoulaGatewayError(f"Network error: {err}", self._id) from err
+            raise AzoulaGatewayError(f"Network error: {err}", self.gateway_id) from err
 
         if self._connect_result == 0:
             _LOGGER.info(
                 "Connected to gateway %s at %s:%s",
-                self._id,
+                self.gateway_id,
                 self._host,
                 self._port,
             )
@@ -149,12 +149,12 @@ class AzoulaGateway:
         if self._connect_result in (4, 5):
             raise AzoulaGatewayError(
                 "Authentication failed. Please press the gateway button and retry",
-                self._id,
+                self.gateway_id,
             )
 
         raise AzoulaGatewayError(
             f"Connection failed with code {self._connect_result}",
-            self._id,
+            self.gateway_id,
         )
 
     async def disconnect(self) -> None:
@@ -179,10 +179,12 @@ class AzoulaGateway:
             _LOGGER.debug(
                 "Subscribed to topic %s for gateway %s",
                 self._sub_topic,
-                self._id,
+                self.gateway_id,
             )
 
-            self._notify_listeners(CallbackEventType.ONLINE_STATUS, self._id, True)
+            self._notify_listeners(
+                CallbackEventType.ONLINE_STATUS, self.gateway_id, True
+            )
 
     def _on_disconnect(
         self,
@@ -203,13 +205,13 @@ class AzoulaGateway:
         if reason_code != 0:
             _LOGGER.warning(
                 "Unexpected MQTT disconnection for gateway %s (code %s)",
-                self._id,
+                self.gateway_id,
                 reason_code,
             )
         else:
-            _LOGGER.debug("MQTT disconnected for gateway %s", self._id)
+            _LOGGER.debug("MQTT disconnected for gateway %s", self.gateway_id)
 
-        self._notify_listeners(CallbackEventType.ONLINE_STATUS, self._id, False)
+        self._notify_listeners(CallbackEventType.ONLINE_STATUS, self.gateway_id, False)
 
     def _on_message(
         self, client: paho_mqtt.Client, userdata: Any, msg: paho_mqtt.MQTTMessage
@@ -219,14 +221,14 @@ class AzoulaGateway:
         except json.JSONDecodeError:
             _LOGGER.warning(
                 "Invalid JSON in MQTT message from gateway %s: %s",
-                self._id,
+                self.gateway_id,
                 msg.payload,
             )
             return
 
         _LOGGER.debug(
             "Received MQTT message from gateway %s on topic %s: %s",
-            self._id,
+            self.gateway_id,
             msg.topic,
             payload_json,
         )
@@ -235,7 +237,7 @@ class AzoulaGateway:
         if not method:
             _LOGGER.debug(
                 "Received MQTT message without method field from gateway %s",
-                self._id,
+                self.gateway_id,
             )
             return
 
@@ -249,7 +251,9 @@ class AzoulaGateway:
         if handler:
             handler(payload_json)
         else:
-            _LOGGER.debug("Unhandled method %s from gateway %s", method, self._id)
+            _LOGGER.debug(
+                "Unhandled method %s from gateway %s", method, self.gateway_id
+            )
 
     async def discover_devices(self) -> dict[DeviceType, list[Light]]:
         """Discover all sub-devices under the gateway."""
@@ -260,7 +264,7 @@ class AzoulaGateway:
 
         request_payload = {
             "id": str(uuid.uuid4()),
-            "deviceID": self._id,
+            "deviceID": self.gateway_id,
             "method": METHOD_DEVICE_DISCOVER,
         }
 
@@ -277,7 +281,7 @@ class AzoulaGateway:
         except TimeoutError:
             _LOGGER.warning(
                 "Device discovery timeout for gateway %s",
-                self._id,
+                self.gateway_id,
             )
 
         return self._devices_result.copy()
@@ -307,7 +311,7 @@ class AzoulaGateway:
             service_identifier,
             device_id,
             params,
-            self._id,
+            self.gateway_id,
         )
 
     def _handle_device_discover_response(self, payload: dict[str, Any]) -> None:
@@ -352,7 +356,7 @@ class AzoulaGateway:
         _LOGGER.debug(
             "Property update for device %s on gateway %s: %s",
             device_id,
-            self._id,
+            self.gateway_id,
             params,
         )
 
@@ -371,7 +375,7 @@ class AzoulaGateway:
         if code != 200:
             _LOGGER.warning(
                 "Service invocation failed on gateway %s: code=%s, id=%s",
-                self._id,
+                self.gateway_id,
                 code,
                 request_id,
             )

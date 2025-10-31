@@ -21,6 +21,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
+    SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
     SERVICE_ONOFF_OFF,
     SERVICE_ONOFF_ON,
     CallbackEventType,
@@ -274,6 +275,83 @@ class GatewayTester:
             _LOGGER.info("✓ Light control test PASSED")
             return True
 
+    async def test_light_level_with_onoff(self) -> bool:
+        """Test light brightness service with on/off transition."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 6: Light Level With OnOff Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Light level test FAILED: No gateway instance")
+            return False
+
+        try:
+            devices_dict = await self.gateway.discover_devices()
+            lights = devices_dict.get(DeviceType.LIGHT, [])
+
+            if not lights:
+                _LOGGER.warning("No lights found, skipping brightness test")
+                return True
+
+            test_light = lights[0]
+            _LOGGER.info(
+                "Setting brightness for light: %s (%s)",
+                test_light.device_id,
+                test_light.product_id,
+            )
+
+            initial_events_count = len(self.property_update_events)
+            level_params = {
+                "Level": 50,
+                "TransitionTime": 10,
+            }
+
+            _LOGGER.info(
+                "Invoking %s with params %s",
+                SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
+                level_params,
+            )
+            await self.gateway.invoke_service(
+                test_light.device_id,
+                SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
+                level_params,
+            )
+
+            await asyncio.sleep(2)
+
+            new_events = len(self.property_update_events) - initial_events_count
+            if new_events <= 0:
+                _LOGGER.warning(
+                    "No property update events recorded for brightness test"
+                )
+            else:
+                level_updates: list[int | float] = []
+                for dev_id, params in self.property_update_events[-new_events:]:
+                    if dev_id != test_light.device_id:
+                        continue
+                    current_level = params.get("CurrentLevel")
+                    if current_level is not None:
+                        level_updates.append(current_level["value"])
+
+                if level_updates:
+                    _LOGGER.info(
+                        "Received brightness updates for %s: %s",
+                        test_light.device_id,
+                        level_updates,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "No brightness value updates received for %s",
+                        test_light.device_id,
+                    )
+
+        except Exception:
+            _LOGGER.exception("✗ Light level test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Light level test PASSED")
+            return True
+
     async def run_all_tests(self) -> None:
         """Run all connection tests."""
         _LOGGER.info("Starting Azoula Gateway Connection Tests")
@@ -307,6 +385,10 @@ class GatewayTester:
             # Test 5: Light Control
             result = await self.test_light_control()
             results.append(("Light Control", result))
+
+            # Test 6: Light Level With OnOff
+            result = await self.test_light_level_with_onoff()
+            results.append(("Light Level With OnOff", result))
 
         finally:
             # Cleanup

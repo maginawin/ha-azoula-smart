@@ -1,9 +1,10 @@
 """Type definitions for Azoula Smart SDK."""
 
+from collections.abc import Callable
 from typing import TypedDict
 
 
-class PropertyValue(TypedDict, total=False):
+class PropertyValue(TypedDict):
     """Property value with metadata from thing.event.property.post."""
 
     value: int | float  # The actual property value
@@ -19,3 +20,6 @@ class PropertyParams(TypedDict, total=False):
     ColorTemperature: PropertyValue  # Color temperature in Kelvin
     ColorX: PropertyValue  # CIE 1931 color space X coordinate
     ColorY: PropertyValue  # CIE 1931 color space Y coordinate
+
+
+ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]
