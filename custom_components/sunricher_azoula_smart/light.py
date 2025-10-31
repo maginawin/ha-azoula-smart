@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .sdk.const import (
+    SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
     SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
     SERVICE_ONOFF_OFF,
     SERVICE_ONOFF_ON,
@@ -54,8 +55,8 @@ class AzoulaLight(LightEntity):
     _attr_color_mode: ColorMode | str | None = None
     _attr_color_temp_kelvin: int | None = None
     _attr_rgb_color: tuple[int, int, int] | None = None
-    _attr_max_color_temp_kelvin = 6500
-    _attr_min_color_temp_kelvin = 2700
+    _attr_max_color_temp_kelvin = 6250
+    _attr_min_color_temp_kelvin = 2222
 
     def __init__(self, light: Light, gateway: AzoulaGateway) -> None:
         """Initialize the light entity."""
@@ -108,9 +109,33 @@ class AzoulaLight(LightEntity):
             rgb_color,
         )
 
-        if brightness:
-            params: dict[str, Any] = {
-                "Level": int(round(brightness * 100 / 254)),
+        service_invoked = False
+
+        if color_temp_kelvin is not None:
+            color_temp = int(color_temp_kelvin)
+            min_temp = self._attr_min_color_temp_kelvin
+            max_temp = self._attr_max_color_temp_kelvin
+
+            if min_temp is not None and color_temp < min_temp:
+                color_temp = min_temp
+            if max_temp is not None and color_temp > max_temp:
+                color_temp = max_temp
+
+            params = {
+                "ColorTemperature": color_temp,
+                "TransitionTime": 10,
+            }
+            await self._gateway.invoke_service(
+                self._light.device_id,
+                SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
+                params,
+            )
+            service_invoked = True
+
+        if brightness is not None:
+            level = max(0, min(254, int(brightness)))
+            params = {
+                "Level": int(round(level * 100 / 254)),
                 "TransitionTime": 10,
             }
 
@@ -119,7 +144,9 @@ class AzoulaLight(LightEntity):
                 SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
                 params,
             )
-        else:
+            service_invoked = True
+
+        if not service_invoked:
             await self._gateway.invoke_service(
                 self._light.device_id,
                 SERVICE_ONOFF_ON,
@@ -161,6 +188,9 @@ class AzoulaLight(LightEntity):
 
         if "CurrentLevel" in status:
             self._attr_brightness = int(status["CurrentLevel"]["value"] * 254 / 100)
+
+        if "ColorTemperature" in status:
+            self._attr_color_temp_kelvin = int(status["ColorTemperature"]["value"])
 
         self.schedule_update_ha_state()
 

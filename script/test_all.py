@@ -21,6 +21,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
+    SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
     SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
     SERVICE_ONOFF_OFF,
     SERVICE_ONOFF_ON,
@@ -352,6 +353,102 @@ class GatewayTester:
             _LOGGER.info("✓ Light level test PASSED")
             return True
 
+    async def test_light_color_temperature(self) -> bool:
+        """Test light color temperature control."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 7: Light Color Temperature Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error(
+                "✗ Light color temperature test FAILED: No gateway instance"
+            )
+            return False
+
+        try:
+            devices_dict = await self.gateway.discover_devices()
+            lights = devices_dict.get(DeviceType.LIGHT, [])
+
+            if not lights:
+                _LOGGER.warning("No lights found, skipping color temperature test")
+                return True
+
+            test_light = lights[0]
+            _LOGGER.info(
+                "Setting color temperature for light: %s (%s)",
+                test_light.device_id,
+                test_light.product_id,
+            )
+
+            initial_events_count = len(self.property_update_events)
+            color_temp_params = {
+                "ColorTemperature": 3500,
+                "TransitionTime": 10,
+            }
+
+            _LOGGER.info(
+                "Invoking %s with params %s",
+                SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
+                color_temp_params,
+            )
+            await self.gateway.invoke_service(
+                test_light.device_id,
+                SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
+                color_temp_params,
+            )
+
+            await asyncio.sleep(2)
+
+            new_events = len(self.property_update_events) - initial_events_count
+            if new_events <= 0:
+                _LOGGER.warning(
+                    "No property update events recorded for color temperature test"
+                )
+            else:
+                color_temp_updates: list[int | float] = []
+                xy_updates: list[tuple[int | float | None, int | float | None]] = []
+                for dev_id, params in self.property_update_events[-new_events:]:
+                    if dev_id != test_light.device_id:
+                        continue
+                    color_temp = params.get("ColorTemperature")
+                    current_x = params.get("CurrentX")
+                    current_y = params.get("CurrentY")
+                    if color_temp is not None:
+                        color_temp_updates.append(color_temp["value"])
+                    if current_x is not None or current_y is not None:
+                        xy_updates.append(
+                            (
+                                current_x["value"] if current_x else None,
+                                current_y["value"] if current_y else None,
+                            )
+                        )
+
+                if color_temp_updates:
+                    _LOGGER.info(
+                        "Received color temperature updates for %s: %s",
+                        test_light.device_id,
+                        color_temp_updates,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "No color temperature value updates received for %s",
+                        test_light.device_id,
+                    )
+
+                if xy_updates:
+                    _LOGGER.info(
+                        "Received color XY updates for %s: %s",
+                        test_light.device_id,
+                        xy_updates,
+                    )
+
+        except Exception:
+            _LOGGER.exception("✗ Light color temperature test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Light color temperature test PASSED")
+            return True
+
     async def run_all_tests(self) -> None:
         """Run all connection tests."""
         _LOGGER.info("Starting Azoula Gateway Connection Tests")
@@ -389,6 +486,10 @@ class GatewayTester:
             # Test 6: Light Level With OnOff
             result = await self.test_light_level_with_onoff()
             results.append(("Light Level With OnOff", result))
+
+            # Test 7: Light Color Temperature
+            result = await self.test_light_color_temperature()
+            results.append(("Light Color Temperature", result))
 
         finally:
             # Cleanup

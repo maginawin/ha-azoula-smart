@@ -18,8 +18,9 @@ class PropertyParams(TypedDict, total=False):
     OnOff: PropertyValue  # 0 = off, 1 = on
     CurrentLevel: PropertyValue  # Brightness level 0-254
     ColorTemperature: PropertyValue  # Color temperature in Kelvin
-    ColorX: PropertyValue  # CIE 1931 color space X coordinate
-    ColorY: PropertyValue  # CIE 1931 color space Y coordinate
-
+    CurrentHue: PropertyValue  # Hue angle 0-360 degrees
+    CurrentSaturation: PropertyValue  # Saturation level 0-100 percent
+    CurrentX: PropertyValue  # CIE 1931 color space X coordinate
+    CurrentY: PropertyValue  # CIE 1931 color space Y coordinate
 
 ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]
