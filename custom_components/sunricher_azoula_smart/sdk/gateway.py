@@ -24,9 +24,12 @@ from .const import (
     DEFAULT_MQTT_PORT,
     METHOD_DEVICE_DISCOVER,
     METHOD_DEVICE_DISCOVER_REPLY,
+    METHOD_PROPERTY_GET,
+    METHOD_PROPERTY_GET_REPLY,
     METHOD_PROPERTY_POST,
     METHOD_SERVICE_INVOKE,
     METHOD_SERVICE_INVOKE_REPLY,
+    SERVICE_PROPERTY_GET,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
     CallbackEventType,
@@ -244,6 +247,7 @@ class AzoulaGateway:
         method_handlers: dict[str, Callable[[dict[str, Any]], None]] = {
             METHOD_DEVICE_DISCOVER_REPLY: self._handle_device_discover_response,
             METHOD_PROPERTY_POST: self._handle_property_post,
+            METHOD_PROPERTY_GET_REPLY: self._handle_property_get_reply,
             METHOD_SERVICE_INVOKE_REPLY: self._handle_service_reply,
         }
 
@@ -290,7 +294,7 @@ class AzoulaGateway:
         self,
         device_id: str,
         service_identifier: str,
-        params: dict[str, Any] | None = None,
+        params: dict[str, Any] | list[str] | None = None,
     ) -> None:
         """Invoke a device service (thing.service)."""
         request_payload: dict[str, Any] = {
@@ -311,6 +315,35 @@ class AzoulaGateway:
             service_identifier,
             device_id,
             params,
+            self.gateway_id,
+        )
+
+    async def get_device_properties(
+        self,
+        device_id: str,
+        properties: list[str],
+    ) -> None:
+        """Request device properties via thing.service.property.get.
+
+        The device will respond with property.post event containing the values.
+        """
+        request_payload: dict[str, Any] = {
+            "id": str(uuid.uuid4()),
+            "deviceID": device_id,
+            "method": METHOD_PROPERTY_GET,
+            "identifier": SERVICE_PROPERTY_GET,
+            "params": properties,
+        }
+
+        self._mqtt_client.publish(
+            self._pub_topic,
+            json.dumps(request_payload),
+        )
+
+        _LOGGER.debug(
+            "Requested properties %s for device %s on gateway %s",
+            properties,
+            device_id,
             self.gateway_id,
         )
 
@@ -365,6 +398,41 @@ class AzoulaGateway:
             CallbackEventType.PROPERTY_UPDATE,
             device_id,
             params,
+        )
+
+    def _handle_property_get_reply(self, payload: dict[str, Any]) -> None:
+        """Handle property get reply (thing.service.property.get.reply)."""
+        code = payload.get("code", 0)
+        device_id = payload.get("deviceID")
+        data = payload.get("data", {})
+
+        if code != 200:
+            _LOGGER.warning(
+                "Property get failed for device %s on gateway %s: code=%s",
+                device_id,
+                self.gateway_id,
+                code,
+            )
+            return
+
+        if not device_id or not data:
+            return
+
+        _LOGGER.debug(
+            "Property get reply for device %s on gateway %s: %s",
+            device_id,
+            self.gateway_id,
+            data,
+        )
+
+        normalized_data = {}
+        for prop_name, prop_value in data.items():
+            normalized_data[prop_name] = {"value": prop_value}
+
+        self._notify_listeners(
+            CallbackEventType.PROPERTY_UPDATE,
+            device_id,
+            normalized_data,  # type: ignore[arg-type]
         )
 
     def _handle_service_reply(self, payload: dict[str, Any]) -> None:

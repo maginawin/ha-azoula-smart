@@ -277,10 +277,73 @@ class GatewayTester:
             _LOGGER.info("✓ Light control test PASSED")
             return True
 
+    async def test_property_get(self) -> bool:
+        """Test property get service."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 6: Property Get Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Property get test FAILED: No gateway instance")
+            return False
+
+        try:
+            devices_dict = await self.gateway.discover_devices()
+            lights = devices_dict.get(DeviceType.LIGHT, [])
+
+            if not lights:
+                _LOGGER.warning("No lights found, skipping property get test")
+                return True
+
+            test_light = lights[0]
+            _LOGGER.info(
+                "Getting properties for light: %s (%s)",
+                test_light.device_id,
+                test_light.product_id,
+            )
+
+            initial_events_count = len(self.property_update_events)
+
+            properties = ["OnOff", "CurrentLevel"]
+            if "CCT" in test_light.product_id or "RGBCCT" in test_light.product_id:
+                properties.append("ColorTemperature")
+            if "RGB" in test_light.product_id or "RGBCCT" in test_light.product_id:
+                properties.extend(["CurrentX", "CurrentY"])
+
+            _LOGGER.info("Requesting properties: %s", properties)
+            await self.gateway.get_device_properties(
+                test_light.device_id,
+                properties,
+            )
+
+            await asyncio.sleep(2)
+
+            new_events = len(self.property_update_events) - initial_events_count
+            if new_events <= 0:
+                _LOGGER.warning(
+                    "No property update events recorded for property get test"
+                )
+            else:
+                _LOGGER.info("Received %d property update event(s)", new_events)
+                for dev_id, params in self.property_update_events[-new_events:]:
+                    if dev_id != test_light.device_id:
+                        continue
+                    _LOGGER.info("Properties received for %s:", dev_id)
+                    for prop_name, prop_data in params.items():
+                        if isinstance(prop_data, dict) and "value" in prop_data:
+                            _LOGGER.info("  - %s: %s", prop_name, prop_data["value"])
+
+        except Exception:
+            _LOGGER.exception("✗ Property get test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Property get test PASSED")
+            return True
+
     async def test_light_level_with_onoff(self) -> bool:
         """Test light brightness service with on/off transition."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 6: Light Level With OnOff Test")
+        _LOGGER.info("Test 7: Light Level With OnOff Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
@@ -357,7 +420,7 @@ class GatewayTester:
     async def test_light_color_temperature(self) -> bool:
         """Test light color temperature control."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 7: Light Color Temperature Test")
+        _LOGGER.info("Test 8: Light Color Temperature Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
@@ -451,7 +514,7 @@ class GatewayTester:
     async def test_light_color_xy(self) -> bool:
         """Test light XY color control."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 8: Light Color XY Test")
+        _LOGGER.info("Test 9: Light Color XY Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
@@ -575,15 +638,19 @@ class GatewayTester:
             result = await self.test_light_control()
             results.append(("Light Control", result))
 
-            # Test 6: Light Level With OnOff
+            # Test 6: Property Get
+            result = await self.test_property_get()
+            results.append(("Property Get", result))
+
+            # Test 7: Light Level With OnOff
             result = await self.test_light_level_with_onoff()
             results.append(("Light Level With OnOff", result))
 
-            # Test 7: Light Color Temperature
+            # Test 8: Light Color Temperature
             result = await self.test_light_color_temperature()
             results.append(("Light Color Temperature", result))
 
-            # Test 8: Light Color XY
+            # Test 9: Light Color XY
             result = await self.test_light_color_xy()
             results.append(("Light Color XY", result))
 

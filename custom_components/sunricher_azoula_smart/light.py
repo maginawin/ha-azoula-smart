@@ -98,12 +98,31 @@ class AzoulaLight(LightEntity):
 
         self._attr_supported_color_modes = supported_modes
 
+    def _get_required_properties(self) -> list[str]:
+        """Get list of properties to fetch based on device capabilities."""
+        properties = ["OnOff", "CurrentLevel"]
+
+        if (
+            self._attr_supported_color_modes
+            and ColorMode.COLOR_TEMP in self._attr_supported_color_modes
+        ):
+            properties.append("ColorTemperature")
+
+        if (
+            self._attr_supported_color_modes
+            and ColorMode.XY in self._attr_supported_color_modes
+        ):
+            properties.extend(["CurrentX", "CurrentY"])
+
+        return properties
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         color_temp_kelvin = kwargs.get(ATTR_COLOR_TEMP_KELVIN)
         rgb_color = kwargs.get(ATTR_RGB_COLOR)
         xy_color = kwargs.get(ATTR_XY_COLOR)
+        params: dict[str, Any] = {}
 
         _LOGGER.debug(
             "Turning on light %s: brightness=%s, color_temp=%s, rgb=%s, xy=%s",
@@ -141,7 +160,7 @@ class AzoulaLight(LightEntity):
             color_x, color_y = xy_color
             clamped_x = max(0.0, min(0.996, float(color_x)))
             clamped_y = max(0.0, min(0.996, float(color_y)))
-            params: dict[str, Any] = {
+            params = {
                 "ColorX": round(clamped_x, 3),
                 "ColorY": round(clamped_y, 3),
                 "TransitionTime": 10,
@@ -199,6 +218,18 @@ class AzoulaLight(LightEntity):
             )
         )
 
+        properties = self._get_required_properties()
+        await self._gateway.get_device_properties(
+            self._light.device_id,
+            properties,
+        )
+
+        _LOGGER.debug(
+            "Requested initial properties for light %s: %s",
+            self._light.device_id,
+            properties,
+        )
+
     @callback
     def _handle_device_update(self, dev_id: str, status: PropertyParams) -> None:
         if dev_id != self._attr_unique_id:
@@ -208,20 +239,29 @@ class AzoulaLight(LightEntity):
             self._attr_is_on = status["OnOff"]["value"] == 1
 
         if "CurrentLevel" in status:
-            self._attr_brightness = int(status["CurrentLevel"]["value"] * 254 / 100)
-            self._attr_color_mode = ColorMode.BRIGHTNESS
+            level = status["CurrentLevel"]["value"]
+            self._attr_brightness = int(level * 254 / 100)
 
         if "ColorTemperature" in status:
-            self._attr_color_temp_kelvin = int(status["ColorTemperature"]["value"])
-            self._attr_color_mode = ColorMode.COLOR_TEMP
+            color_temp = status["ColorTemperature"]["value"]
+            self._attr_color_temp_kelvin = int(color_temp)
+            if (
+                self._attr_supported_color_modes
+                and ColorMode.COLOR_TEMP in self._attr_supported_color_modes
+            ):
+                self._attr_color_mode = ColorMode.COLOR_TEMP
 
         current_x = status.get("CurrentX")
         current_y = status.get("CurrentY")
-        if current_x is not None or current_y is not None:
-            x_value = float(current_x["value"]) if current_x is not None else None
-            y_value = float(current_y["value"]) if current_y is not None else None
-            if x_value is not None and y_value is not None:
-                self._attr_xy_color = (x_value, y_value)
+        if current_x is not None and current_y is not None:
+            self._attr_xy_color = (
+                float(current_x["value"]),
+                float(current_y["value"]),
+            )
+            if (
+                self._attr_supported_color_modes
+                and ColorMode.XY in self._attr_supported_color_modes
+            ):
                 self._attr_color_mode = ColorMode.XY
 
         self.schedule_update_ha_state()

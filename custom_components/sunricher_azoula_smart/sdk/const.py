@@ -16,6 +16,11 @@ METHOD_DEVICE_DISCOVER_REPLY = "thing.subdev.getall.reply"
 METHOD_SERVICE_INVOKE = "thing.service"
 METHOD_SERVICE_INVOKE_REPLY = "thing.service.reply"
 METHOD_PROPERTY_POST = "thing.event.property.post"
+METHOD_PROPERTY_GET = "thing.service.property.get"
+METHOD_PROPERTY_GET_REPLY = "thing.service.property.get.reply"
+
+# Property service identifiers
+SERVICE_PROPERTY_GET = "get"
 
 # Light service identifiers (Zigbee Cluster Services)
 SERVICE_ONOFF_ON = "OnOffClusterOn"
