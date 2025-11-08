@@ -67,7 +67,7 @@ class GatewayTester:
         # Device discovery cache
         self.discovered_devices: dict[DeviceType, list[Any]] = {}
         self.test_light: Any = None
-        self.test_motion_sensor: Any = None
+        self.test_occupancy_sensor: Any = None
 
         # Event waiting support
         self._pending_online_status: bool | None = None
@@ -239,9 +239,9 @@ class GatewayTester:
             if lights:
                 self.test_light = lights[0]
 
-            motion_sensors = self.discovered_devices.get(DeviceType.MOTION_SENSOR, [])
-            _LOGGER.info("Found %d motion sensor(s):", len(motion_sensors))
-            for sensor in motion_sensors:
+            occupancy_sensors = self.discovered_devices.get(DeviceType.OCCUPANCY_SENSOR, [])
+            _LOGGER.info("Found %d occupancy sensor(s):", len(occupancy_sensors))
+            for sensor in occupancy_sensors:
                 online_status = "online" if sensor.online else "offline"
                 _LOGGER.info(
                     "  - %s (%s) [%s] - %s",
@@ -251,9 +251,9 @@ class GatewayTester:
                     online_status,
                 )
 
-            # Cache the first motion sensor for subsequent tests
-            if motion_sensors:
-                self.test_motion_sensor = motion_sensors[0]
+            # Cache the first occupancy sensor for subsequent tests
+            if occupancy_sensors:
+                self.test_occupancy_sensor = occupancy_sensors[0]
 
         except Exception:
             _LOGGER.exception("✗ Device discovery test FAILED")
@@ -601,66 +601,66 @@ class GatewayTester:
             _LOGGER.info("✓ Light color XY test PASSED")
             return True
 
-    async def test_motion_sensor_monitoring(self) -> bool:
-        """Test motion sensor property monitoring."""
+    async def test_occupancy_sensor_monitoring(self) -> bool:
+        """Test occupancy sensor property monitoring."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 10: Motion Sensor Monitoring Test")
+        _LOGGER.info("Test 10: Occupancy Sensor Monitoring Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
-            _LOGGER.error("✗ Motion sensor monitoring test FAILED: No gateway instance")
+            _LOGGER.error("✗ Occupancy sensor monitoring test FAILED: No gateway instance")
             return False
 
         try:
-            # Use cached motion sensor from discovery test
-            if not self.test_motion_sensor:
-                _LOGGER.warning("No motion sensors found, skipping motion sensor test")
+            # Use cached occupancy sensor from discovery test
+            if not self.test_occupancy_sensor:
+                _LOGGER.warning("No occupancy sensors found, skipping occupancy sensor test")
                 return True
 
             _LOGGER.info(
-                "Monitoring motion sensor: %s (%s)",
-                self.test_motion_sensor.device_id,
-                self.test_motion_sensor.product_id,
+                "Monitoring occupancy sensor: %s (%s)",
+                self.test_occupancy_sensor.device_id,
+                self.test_occupancy_sensor.product_id,
             )
 
             # Request current property values
-            properties = ["MotionSensorIntrusionIndication"]
+            properties = ["OccupancyState"]
 
             _LOGGER.info("Requesting properties: %s", properties)
             await self.gateway.get_device_properties(
-                self.test_motion_sensor.device_id,
+                self.test_occupancy_sensor.device_id,
                 properties,
             )
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_motion_sensor.device_id, timeout=3.0
+                self.test_occupancy_sensor.device_id, timeout=3.0
             )
 
             if params:
                 _LOGGER.info(
-                    "Properties received for %s:", self.test_motion_sensor.device_id
+                    "Properties received for %s:", self.test_occupancy_sensor.device_id
                 )
                 for prop_name, prop_data in params.items():
                     if isinstance(prop_data, dict) and "value" in prop_data:
                         value = prop_data["value"] # pyright: ignore[reportUnknownVariableType]
-                        status = "alarm" if value == 1 else "normal"
+                        status = "occupied" if value == 1 else "unoccupied"
                         _LOGGER.info("  - %s: %s (%s)", prop_name, value, status) # pyright: ignore[reportUnknownArgumentType]
             else:
                 _LOGGER.warning(
-                    "No property update events recorded for motion sensor test"
+                    "No property update events recorded for occupancy sensor test"
                 )
 
             _LOGGER.info(
-                "Motion sensor is now being monitored. "
-                "Any motion detection will trigger property updates."
+                "Occupancy sensor is now being monitored. "
+                "Any occupancy changes will trigger property updates."
             )
 
         except Exception:
-            _LOGGER.exception("✗ Motion sensor monitoring test FAILED")
+            _LOGGER.exception("✗ Occupancy sensor monitoring test FAILED")
             return False
         else:
-            _LOGGER.info("✓ Motion sensor monitoring test PASSED")
+            _LOGGER.info("✓ Occupancy sensor monitoring test PASSED")
             return True
 
     async def run_all_tests(self) -> None:
@@ -713,9 +713,9 @@ class GatewayTester:
             result = await self.test_light_color_xy()
             results.append(("Light Color XY", result))
 
-            # Test 10: Motion Sensor Monitoring
-            result = await self.test_motion_sensor_monitoring()
-            results.append(("Motion Sensor Monitoring", result))
+            # Test 10: Occupancy Sensor Monitoring
+            result = await self.test_occupancy_sensor_monitoring()
+            results.append(("Occupancy Sensor Monitoring", result))
 
         finally:
             # Cleanup

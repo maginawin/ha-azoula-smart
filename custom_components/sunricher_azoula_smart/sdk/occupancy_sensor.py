@@ -1,4 +1,4 @@
-"""Motion sensor device model for Azoula Smart gateway."""
+"""Occupancy sensor device model for Azoula Smart gateway."""
 
 from __future__ import annotations
 
@@ -7,8 +7,13 @@ from typing import Any
 
 
 @dataclass
-class MotionSensor:
-    """Represents a motion sensor device under the Azoula gateway."""
+class OccupancySensor:
+    """Represents an occupancy sensor device under the Azoula gateway.
+
+    Based on Azoula.md device type table:
+    - deviceType 0107: Occupancy Sensor
+    - Property: OccupancyState (0=unoccupied, 1=occupied)
+    """
 
     name: str
     device_id: str
@@ -20,11 +25,11 @@ class MotionSensor:
     manufacturer: str
 
     # Device state (updated from thing.event.property.post)
-    motion_detected: bool = False
+    occupied: bool = False
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> MotionSensor:
-        """Create MotionSensor instance from protocol response dictionary."""
+    def from_dict(cls, data: dict[str, Any]) -> OccupancySensor:
+        """Create OccupancySensor instance from protocol response dictionary."""
         return cls(
             name=data["config"]["name"],
             device_id=data["deviceID"],
@@ -42,8 +47,8 @@ class MotionSensor:
         return self.device_id
 
     @staticmethod
-    def is_motion_sensor_device(data: dict[str, Any]) -> bool:
-        """Check if device data represents a motion sensor device."""
+    def is_occupancy_sensor_device(data: dict[str, Any]) -> bool:
+        """Check if device data represents an occupancy sensor device."""
         profile = data.get("profile", "")
         device_type = data.get("deviceType", "")
-        return bool(profile == "0104" and device_type in ("04e1", "0001"))
+        return bool(profile == "0104" and device_type == "0107")

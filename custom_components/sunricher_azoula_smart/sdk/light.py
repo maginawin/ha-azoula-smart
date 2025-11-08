@@ -45,7 +45,20 @@ class Light:
 
     @staticmethod
     def is_light_device(data: dict[str, Any]) -> bool:
-        """Check if device data represents a light device."""
+        """Check if device data represents a light device.
+
+        Based on Azoula.md device type table:
+        - 0100-0105: Various light types and switches
+        - 0106: Light Sensor (NOT a light)
+        - 0107: Occupancy Sensor (NOT a light)
+        - 0108-010d: Light ballasts and units
+        - 01Ex: DALI lights
+        """
         profile = data.get("profile", "")
         device_type = data.get("deviceType", "")
-        return bool(profile == "0104" and device_type.startswith("01"))
+        # Lighting devices start with 01, but exclude sensors
+        return bool(
+            profile == "0104"
+            and device_type.startswith("01")
+            and device_type not in ("0106", "0107")
+        )

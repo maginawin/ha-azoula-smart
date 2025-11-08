@@ -37,7 +37,7 @@ from .const import (
 )
 from .exceptions import AzoulaGatewayError
 from .light import Light
-from .motion_sensor import MotionSensor
+from .occupancy_sensor import OccupancySensor
 from .types import ListenerCallback, PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class AzoulaGateway:
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
             self._mqtt_client = paho_mqtt.Client(
-                CallbackAPIVersion.VERSION2,
+                CallbackAPIVersion.VERSION2, # pyright: ignore[reportPossiblyUnboundVariable] 
                 client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
@@ -93,7 +93,7 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._devices_result: dict[DeviceType, list[Light] | list[MotionSensor]] = {}
+        self._devices_result: dict[DeviceType, list[Light] | list[OccupancySensor]] = {}
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -262,10 +262,10 @@ class AzoulaGateway:
 
     async def discover_devices(
         self,
-    ) -> dict[DeviceType, list[Light] | list[MotionSensor]]:
+    ) -> dict[DeviceType, list[Light] | list[OccupancySensor]]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
-        self._devices_result = {DeviceType.LIGHT: [], DeviceType.MOTION_SENSOR: []}
+        self._devices_result = {DeviceType.LIGHT: [], DeviceType.OCCUPANCY_SENSOR: []}
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -372,15 +372,15 @@ class AzoulaGateway:
                 lights: list[Light] = self._devices_result[DeviceType.LIGHT]  # type: ignore[assignment]
                 if not any(d.unique_id == light.unique_id for d in lights):
                     lights.append(light)
-            elif MotionSensor.is_motion_sensor_device(device_data):
-                motion_sensor = MotionSensor.from_dict(device_data)
-                motion_sensors: list[MotionSensor] = self._devices_result[
-                    DeviceType.MOTION_SENSOR
+            elif OccupancySensor.is_occupancy_sensor_device(device_data):
+                occupancy_sensor = OccupancySensor.from_dict(device_data)
+                occupancy_sensors: list[OccupancySensor] = self._devices_result[
+                    DeviceType.OCCUPANCY_SENSOR
                 ]  # type: ignore[assignment]
                 if not any(
-                    d.unique_id == motion_sensor.unique_id for d in motion_sensors
+                    d.unique_id == occupancy_sensor.unique_id for d in occupancy_sensors
                 ):
-                    motion_sensors.append(motion_sensor)
+                    occupancy_sensors.append(occupancy_sensor)
 
         self._current_page = current_page
 
