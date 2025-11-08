@@ -17,9 +17,11 @@ from .const import DOMAIN, MANUFACTURER
 from .sdk.const import DeviceType
 from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
+from .sdk.light import Light
+from .sdk.occupancy_sensor import OccupancySensor
 from .types import AzoulaSmartConfigEntry, AzoulaSmartData
 
-_PLATFORMS: list[Platform] = [Platform.LIGHT]
+_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
@@ -49,9 +51,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
 
     devices = await gateway.discover_devices()
 
+    # Extract device lists with proper typing
+    lights_raw = devices.get(DeviceType.LIGHT, [])
+    sensors_raw = devices.get(DeviceType.OCCUPANCY_SENSOR, [])
+
+    # Type narrowing through instance checks
+    lights = [d for d in lights_raw if isinstance(d, Light)]
+    occupancy_sensors = [d for d in sensors_raw if isinstance(d, OccupancySensor)]
+
     entry.runtime_data = AzoulaSmartData(
         gateway=gateway,
-        lights=devices[DeviceType.LIGHT],
+        lights=lights,
+        occupancy_sensors=occupancy_sensors,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)

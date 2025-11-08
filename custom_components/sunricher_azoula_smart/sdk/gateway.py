@@ -65,7 +65,7 @@ class AzoulaGateway:
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
             self._mqtt_client = paho_mqtt.Client(
-                CallbackAPIVersion.VERSION2, # pyright: ignore[reportPossiblyUnboundVariable] 
+                CallbackAPIVersion.VERSION2,  # pyright: ignore[reportPossiblyUnboundVariable]
                 client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
@@ -93,7 +93,8 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._devices_result: dict[DeviceType, list[Light] | list[OccupancySensor]] = {}
+        self._discovered_lights: list[Light] = []
+        self._discovered_occupancy_sensors: list[OccupancySensor] = []
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -265,7 +266,8 @@ class AzoulaGateway:
     ) -> dict[DeviceType, list[Light] | list[OccupancySensor]]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
-        self._devices_result = {DeviceType.LIGHT: [], DeviceType.OCCUPANCY_SENSOR: []}
+        self._discovered_lights = []
+        self._discovered_occupancy_sensors = []
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -291,7 +293,10 @@ class AzoulaGateway:
                 self.gateway_id,
             )
 
-        return self._devices_result.copy()
+        return {
+            DeviceType.LIGHT: self._discovered_lights.copy(),
+            DeviceType.OCCUPANCY_SENSOR: self._discovered_occupancy_sensors.copy(),
+        }
 
     async def invoke_service(
         self,
@@ -369,18 +374,17 @@ class AzoulaGateway:
         for device_data in device_list:
             if Light.is_light_device(device_data):
                 light = Light.from_dict(device_data)
-                lights: list[Light] = self._devices_result[DeviceType.LIGHT]  # type: ignore[assignment]
-                if not any(d.unique_id == light.unique_id for d in lights):
-                    lights.append(light)
+                if not any(
+                    d.unique_id == light.unique_id for d in self._discovered_lights
+                ):
+                    self._discovered_lights.append(light)
             elif OccupancySensor.is_occupancy_sensor_device(device_data):
                 occupancy_sensor = OccupancySensor.from_dict(device_data)
-                occupancy_sensors: list[OccupancySensor] = self._devices_result[
-                    DeviceType.OCCUPANCY_SENSOR
-                ]  # type: ignore[assignment]
                 if not any(
-                    d.unique_id == occupancy_sensor.unique_id for d in occupancy_sensors
+                    d.unique_id == occupancy_sensor.unique_id
+                    for d in self._discovered_occupancy_sensors
                 ):
-                    occupancy_sensors.append(occupancy_sensor)
+                    self._discovered_occupancy_sensors.append(occupancy_sensor)
 
         self._current_page = current_page
 

@@ -1,5 +1,7 @@
 """Type definitions for Azoula Smart SDK."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -23,6 +25,7 @@ class PropertyParams(TypedDict, total=False):
     CurrentX: PropertyValue  # CIE 1931 color space X coordinate
     CurrentY: PropertyValue  # CIE 1931 color space Y coordinate
     MotionSensorIntrusionIndication: PropertyValue  # 0 = normal, 1 = alarm
+    OccupancyState: PropertyValue  # 0 = unoccupied, 1 = occupied
 
 
 ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]
