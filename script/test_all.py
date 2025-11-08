@@ -67,6 +67,7 @@ class GatewayTester:
         # Device discovery cache
         self.discovered_devices: dict[DeviceType, list[Any]] = {}
         self.test_light: Any = None
+        self.test_motion_sensor: Any = None
 
         # Event waiting support
         self._pending_online_status: bool | None = None
@@ -238,6 +239,22 @@ class GatewayTester:
             if lights:
                 self.test_light = lights[0]
 
+            motion_sensors = self.discovered_devices.get(DeviceType.MOTION_SENSOR, [])
+            _LOGGER.info("Found %d motion sensor(s):", len(motion_sensors))
+            for sensor in motion_sensors:
+                online_status = "online" if sensor.online else "offline"
+                _LOGGER.info(
+                    "  - %s (%s) [%s] - %s",
+                    sensor.device_id,
+                    sensor.product_id,
+                    sensor.protocol,
+                    online_status,
+                )
+
+            # Cache the first motion sensor for subsequent tests
+            if motion_sensors:
+                self.test_motion_sensor = motion_sensors[0]
+
         except Exception:
             _LOGGER.exception("✗ Device discovery test FAILED")
             return False
@@ -346,7 +363,7 @@ class GatewayTester:
                 _LOGGER.info("Properties received for %s:", self.test_light.device_id)
                 for prop_name, prop_data in params.items():
                     if isinstance(prop_data, dict) and "value" in prop_data:
-                        _LOGGER.info("  - %s: %s", prop_name, prop_data["value"])
+                        _LOGGER.info("  - %s: %s", prop_name, prop_data["value"]) # pyright: ignore[reportUnknownArgumentType]
             else:
                 _LOGGER.warning(
                     "No property update events recorded for property get test"
@@ -528,7 +545,7 @@ class GatewayTester:
                 self.test_light.product_id,
             )
 
-            color_xy_params = {
+            color_xy_params: dict[str, float] = {
                 "ColorX": 0.4,
                 "ColorY": 0.5,
                 "TransitionTime": 10,
@@ -584,6 +601,68 @@ class GatewayTester:
             _LOGGER.info("✓ Light color XY test PASSED")
             return True
 
+    async def test_motion_sensor_monitoring(self) -> bool:
+        """Test motion sensor property monitoring."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 10: Motion Sensor Monitoring Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Motion sensor monitoring test FAILED: No gateway instance")
+            return False
+
+        try:
+            # Use cached motion sensor from discovery test
+            if not self.test_motion_sensor:
+                _LOGGER.warning("No motion sensors found, skipping motion sensor test")
+                return True
+
+            _LOGGER.info(
+                "Monitoring motion sensor: %s (%s)",
+                self.test_motion_sensor.device_id,
+                self.test_motion_sensor.product_id,
+            )
+
+            # Request current property values
+            properties = ["MotionSensorIntrusionIndication"]
+
+            _LOGGER.info("Requesting properties: %s", properties)
+            await self.gateway.get_device_properties(
+                self.test_motion_sensor.device_id,
+                properties,
+            )
+
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_motion_sensor.device_id, timeout=3.0
+            )
+
+            if params:
+                _LOGGER.info(
+                    "Properties received for %s:", self.test_motion_sensor.device_id
+                )
+                for prop_name, prop_data in params.items():
+                    if isinstance(prop_data, dict) and "value" in prop_data:
+                        value = prop_data["value"] # pyright: ignore[reportUnknownVariableType]
+                        status = "alarm" if value == 1 else "normal"
+                        _LOGGER.info("  - %s: %s (%s)", prop_name, value, status) # pyright: ignore[reportUnknownArgumentType]
+            else:
+                _LOGGER.warning(
+                    "No property update events recorded for motion sensor test"
+                )
+
+            _LOGGER.info(
+                "Motion sensor is now being monitored. "
+                "Any motion detection will trigger property updates."
+            )
+
+        except Exception:
+            _LOGGER.exception("✗ Motion sensor monitoring test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Motion sensor monitoring test PASSED")
+            return True
+
     async def run_all_tests(self) -> None:
         """Run all connection tests."""
         _LOGGER.info("Starting Azoula Gateway Connection Tests")
@@ -633,6 +712,10 @@ class GatewayTester:
             # Test 9: Light Color XY
             result = await self.test_light_color_xy()
             results.append(("Light Color XY", result))
+
+            # Test 10: Motion Sensor Monitoring
+            result = await self.test_motion_sensor_monitoring()
+            results.append(("Motion Sensor Monitoring", result))
 
         finally:
             # Cleanup

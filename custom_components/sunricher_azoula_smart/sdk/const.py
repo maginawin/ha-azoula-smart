@@ -42,3 +42,4 @@ class DeviceType(Enum):
     """Device type classification."""
 
     LIGHT = "light"
+    MOTION_SENSOR = "motion_sensor"

@@ -37,6 +37,7 @@ from .const import (
 )
 from .exceptions import AzoulaGatewayError
 from .light import Light
+from .motion_sensor import MotionSensor
 from .types import ListenerCallback, PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class AzoulaGateway:
         if HAS_CALLBACK_API_VERSION:
             # paho-mqtt >= 2.0.0
             self._mqtt_client = paho_mqtt.Client(
-                CallbackAPIVersion.VERSION2,  # pyright: ignore[reportPossiblyUnboundVariable]
+                CallbackAPIVersion.VERSION2,
                 client_id=client_id,
                 protocol=paho_mqtt.MQTTv311,
             )
@@ -92,7 +93,7 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._devices_result: dict[DeviceType, list[Light]] = {}
+        self._devices_result: dict[DeviceType, list[Light] | list[MotionSensor]] = {}
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -259,10 +260,12 @@ class AzoulaGateway:
                 "Unhandled method %s from gateway %s", method, self.gateway_id
             )
 
-    async def discover_devices(self) -> dict[DeviceType, list[Light]]:
+    async def discover_devices(
+        self,
+    ) -> dict[DeviceType, list[Light] | list[MotionSensor]]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
-        self._devices_result = {DeviceType.LIGHT: []}
+        self._devices_result = {DeviceType.LIGHT: [], DeviceType.MOTION_SENSOR: []}
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -363,14 +366,21 @@ class AzoulaGateway:
         data = payload.get("data", {})
         device_list = data.get("deviceList", [])
 
-        lights = self._devices_result[DeviceType.LIGHT]
         for device_data in device_list:
-            if not Light.is_light_device(device_data):
-                continue
-
-            light = Light.from_dict(device_data)
-            if not any(d.unique_id == light.unique_id for d in lights):
-                lights.append(light)
+            if Light.is_light_device(device_data):
+                light = Light.from_dict(device_data)
+                lights: list[Light] = self._devices_result[DeviceType.LIGHT]  # type: ignore[assignment]
+                if not any(d.unique_id == light.unique_id for d in lights):
+                    lights.append(light)
+            elif MotionSensor.is_motion_sensor_device(device_data):
+                motion_sensor = MotionSensor.from_dict(device_data)
+                motion_sensors: list[MotionSensor] = self._devices_result[
+                    DeviceType.MOTION_SENSOR
+                ]  # type: ignore[assignment]
+                if not any(
+                    d.unique_id == motion_sensor.unique_id for d in motion_sensors
+                ):
+                    motion_sensors.append(motion_sensor)
 
         self._current_page = current_page
 
