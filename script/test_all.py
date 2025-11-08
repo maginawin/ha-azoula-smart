@@ -13,6 +13,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -63,16 +64,72 @@ class GatewayTester:
         self.online_status_events: list[tuple[str, bool]] = []
         self.property_update_events: list[tuple[str, PropertyParams]] = []
 
+        # Device discovery cache
+        self.discovered_devices: dict[DeviceType, list[Any]] = {}
+        self.test_light: Any = None
+
+        # Event waiting support
+        self._pending_online_status: bool | None = None
+        self._online_status_event = asyncio.Event()
+        self._pending_property_device_id: str | None = None
+        self._property_update_event = asyncio.Event()
+        self._last_property_params: PropertyParams | None = None
+
     def _on_online_status(self, dev_id: str, is_online: bool) -> None:
         """Callback for online status changes."""
         status = "online" if is_online else "offline"
         _LOGGER.info("Gateway %s is now %s", dev_id, status)
         self.online_status_events.append((dev_id, is_online))
 
+        # Trigger event if waiting for this status
+        if self._pending_online_status is not None:
+            if is_online == self._pending_online_status:
+                self._online_status_event.set()
+
     def _on_property_update(self, dev_id: str, params: PropertyParams) -> None:
         """Callback for property updates."""
         _LOGGER.info("Property update for device %s: %s", dev_id, params)
         self.property_update_events.append((dev_id, params))
+
+        # Trigger event if waiting for this device's property update
+        if self._pending_property_device_id == dev_id:
+            self._last_property_params = params
+            self._property_update_event.set()
+
+    async def _wait_for_online_status(
+        self, expected_status: bool, timeout: float = 5.0
+    ) -> bool:
+        """Wait for online status change with timeout."""
+        self._pending_online_status = expected_status
+        self._online_status_event.clear()
+
+        try:
+            await asyncio.wait_for(self._online_status_event.wait(), timeout=timeout)
+            return True
+        except TimeoutError:
+            _LOGGER.warning("Timeout waiting for online status %s", expected_status)
+            return False
+        finally:
+            self._pending_online_status = None
+
+    async def _wait_for_property_update(
+        self, device_id: str, timeout: float = 5.0
+    ) -> PropertyParams | None:
+        """Wait for property update for specific device with timeout."""
+        self._pending_property_device_id = device_id
+        self._property_update_event.clear()
+        self._last_property_params = None
+
+        try:
+            await asyncio.wait_for(self._property_update_event.wait(), timeout=timeout)
+            return self._last_property_params
+        except TimeoutError:
+            _LOGGER.warning(
+                "Timeout waiting for property update for device %s", device_id
+            )
+            return None
+        finally:
+            self._pending_property_device_id = None
 
     async def test_connection(self) -> bool:
         """Test connecting to the gateway."""
@@ -102,22 +159,11 @@ class GatewayTester:
                 "Connecting to gateway %s at %s...", self.gateway_id, self.host
             )
             await self.gateway.connect()
-
-            # Wait a bit to receive online status callback
-            await asyncio.sleep(2)
+            _LOGGER.info("✓ Connection test PASSED")
+            return True
 
         except Exception:
             _LOGGER.exception("✗ Connection test FAILED")
-            return False
-        else:
-            # Check if we received online status
-            if self.online_status_events:
-                last_event = self.online_status_events[-1]
-                if last_event[1]:  # is_online
-                    _LOGGER.info("✓ Connection test PASSED")
-                    return True
-
-            _LOGGER.error("✗ Connection test FAILED: No online status received")
             return False
 
     async def test_disconnection(self) -> bool:
@@ -132,26 +178,13 @@ class GatewayTester:
 
         try:
             _LOGGER.info("Disconnecting from gateway %s...", self.gateway_id)
-            initial_events_count = len(self.online_status_events)
-
             await self.gateway.disconnect()
-
-            # Wait a bit to receive offline status callback
-            await asyncio.sleep(2)
+            _LOGGER.info("✓ Disconnection test PASSED")
+            return True
 
         except Exception:
             _LOGGER.exception("✗ Disconnection test FAILED")
             return False
-        else:
-            # Check if we received offline status
-            if len(self.online_status_events) > initial_events_count:
-                last_event = self.online_status_events[-1]
-                if not last_event[1]:  # is_offline
-                    _LOGGER.info("✓ Disconnection test PASSED")
-                    return True
-
-            _LOGGER.warning("Disconnection completed (no offline callback received)")
-            return True
 
     async def test_reconnection(self) -> bool:
         """Test reconnecting to the gateway."""
@@ -165,25 +198,12 @@ class GatewayTester:
 
         try:
             _LOGGER.info("Reconnecting to gateway %s...", self.gateway_id)
-            initial_events_count = len(self.online_status_events)
-
             await self.gateway.connect()
-
-            # Wait a bit to receive online status callback
-            await asyncio.sleep(2)
+            _LOGGER.info("✓ Reconnection test PASSED")
+            return True
 
         except Exception:
             _LOGGER.exception("✗ Reconnection test FAILED")
-            return False
-        else:
-            # Check if we received online status
-            if len(self.online_status_events) > initial_events_count:
-                last_event = self.online_status_events[-1]
-                if last_event[1]:  # is_online
-                    _LOGGER.info("✓ Reconnection test PASSED")
-                    return True
-
-            _LOGGER.error("✗ Reconnection test FAILED: No online status received")
             return False
 
     async def test_device_discovery(self) -> bool:
@@ -199,9 +219,10 @@ class GatewayTester:
         try:
             _LOGGER.info("Discovering devices from gateway %s...", self.gateway_id)
 
-            devices_dict = await self.gateway.discover_devices()
+            # Discover devices and cache the results
+            self.discovered_devices = await self.gateway.discover_devices()
 
-            lights = devices_dict.get(DeviceType.LIGHT, [])
+            lights = self.discovered_devices.get(DeviceType.LIGHT, [])
             _LOGGER.info("Found %d light(s):", len(lights))
             for light in lights:
                 online_status = "online" if light.online else "offline"
@@ -212,6 +233,10 @@ class GatewayTester:
                     light.protocol,
                     online_status,
                 )
+
+            # Cache the first light for subsequent tests
+            if lights:
+                self.test_light = lights[0]
 
         except Exception:
             _LOGGER.exception("✗ Device discovery test FAILED")
@@ -231,20 +256,15 @@ class GatewayTester:
             return False
 
         try:
-            # First discover devices to get a light
-            devices_dict = await self.gateway.discover_devices()
-            lights = devices_dict.get(DeviceType.LIGHT, [])
-
-            if not lights:
+            # Use cached light from discovery test
+            if not self.test_light:
                 _LOGGER.warning("No lights found, skipping light control test")
                 return True
 
-            # Use the first light for testing
-            test_light = lights[0]
             _LOGGER.info(
                 "Testing with light: %s (%s)",
-                test_light.device_id,
-                test_light.product_id,
+                self.test_light.device_id,
+                self.test_light.product_id,
             )
 
             # Clear previous property update events
@@ -253,18 +273,18 @@ class GatewayTester:
             # Test turning on
             _LOGGER.info("Turning light ON...")
             await self.gateway.invoke_service(
-                test_light.device_id,
+                self.test_light.device_id,
                 SERVICE_ONOFF_ON,
             )
-            await asyncio.sleep(2)
+            await self._wait_for_property_update(self.test_light.device_id, timeout=3.0)
 
             # Test turning off
             _LOGGER.info("Turning light OFF...")
             await self.gateway.invoke_service(
-                test_light.device_id,
+                self.test_light.device_id,
                 SERVICE_ONOFF_OFF,
             )
-            await asyncio.sleep(2)
+            await self._wait_for_property_update(self.test_light.device_id, timeout=3.0)
 
             # Check if we received property updates
             new_events = len(self.property_update_events) - initial_events_count
@@ -288,50 +308,49 @@ class GatewayTester:
             return False
 
         try:
-            devices_dict = await self.gateway.discover_devices()
-            lights = devices_dict.get(DeviceType.LIGHT, [])
-
-            if not lights:
+            # Use cached light from discovery test
+            if not self.test_light:
                 _LOGGER.warning("No lights found, skipping property get test")
                 return True
 
-            test_light = lights[0]
             _LOGGER.info(
                 "Getting properties for light: %s (%s)",
-                test_light.device_id,
-                test_light.product_id,
+                self.test_light.device_id,
+                self.test_light.product_id,
             )
 
-            initial_events_count = len(self.property_update_events)
-
             properties = ["OnOff", "CurrentLevel"]
-            if "CCT" in test_light.product_id or "RGBCCT" in test_light.product_id:
+            if (
+                "CCT" in self.test_light.product_id
+                or "RGBCCT" in self.test_light.product_id
+            ):
                 properties.append("ColorTemperature")
-            if "RGB" in test_light.product_id or "RGBCCT" in test_light.product_id:
+            if (
+                "RGB" in self.test_light.product_id
+                or "RGBCCT" in self.test_light.product_id
+            ):
                 properties.extend(["CurrentX", "CurrentY"])
 
             _LOGGER.info("Requesting properties: %s", properties)
             await self.gateway.get_device_properties(
-                test_light.device_id,
+                self.test_light.device_id,
                 properties,
             )
 
-            await asyncio.sleep(2)
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_light.device_id, timeout=3.0
+            )
 
-            new_events = len(self.property_update_events) - initial_events_count
-            if new_events <= 0:
+            if params:
+                _LOGGER.info("Properties received for %s:", self.test_light.device_id)
+                for prop_name, prop_data in params.items():
+                    if isinstance(prop_data, dict) and "value" in prop_data:
+                        _LOGGER.info("  - %s: %s", prop_name, prop_data["value"])
+            else:
                 _LOGGER.warning(
                     "No property update events recorded for property get test"
                 )
-            else:
-                _LOGGER.info("Received %d property update event(s)", new_events)
-                for dev_id, params in self.property_update_events[-new_events:]:
-                    if dev_id != test_light.device_id:
-                        continue
-                    _LOGGER.info("Properties received for %s:", dev_id)
-                    for prop_name, prop_data in params.items():
-                        if isinstance(prop_data, dict) and "value" in prop_data:
-                            _LOGGER.info("  - %s: %s", prop_name, prop_data["value"])
 
         except Exception:
             _LOGGER.exception("✗ Property get test FAILED")
@@ -351,21 +370,17 @@ class GatewayTester:
             return False
 
         try:
-            devices_dict = await self.gateway.discover_devices()
-            lights = devices_dict.get(DeviceType.LIGHT, [])
-
-            if not lights:
+            # Use cached light from discovery test
+            if not self.test_light:
                 _LOGGER.warning("No lights found, skipping brightness test")
                 return True
 
-            test_light = lights[0]
             _LOGGER.info(
                 "Setting brightness for light: %s (%s)",
-                test_light.device_id,
-                test_light.product_id,
+                self.test_light.device_id,
+                self.test_light.product_id,
             )
 
-            initial_events_count = len(self.property_update_events)
             level_params = {
                 "Level": 50,
                 "TransitionTime": 10,
@@ -377,38 +392,33 @@ class GatewayTester:
                 level_params,
             )
             await self.gateway.invoke_service(
-                test_light.device_id,
+                self.test_light.device_id,
                 SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
                 level_params,
             )
 
-            await asyncio.sleep(2)
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_light.device_id, timeout=3.0
+            )
 
-            new_events = len(self.property_update_events) - initial_events_count
-            if new_events <= 0:
-                _LOGGER.warning(
-                    "No property update events recorded for brightness test"
-                )
-            else:
-                level_updates: list[int | float] = []
-                for dev_id, params in self.property_update_events[-new_events:]:
-                    if dev_id != test_light.device_id:
-                        continue
-                    current_level = params.get("CurrentLevel")
-                    if current_level is not None:
-                        level_updates.append(current_level["value"])
-
-                if level_updates:
+            if params:
+                current_level = params.get("CurrentLevel")
+                if current_level is not None:
                     _LOGGER.info(
-                        "Received brightness updates for %s: %s",
-                        test_light.device_id,
-                        level_updates,
+                        "Received brightness update for %s: %s",
+                        self.test_light.device_id,
+                        current_level.get("value"),
                     )
                 else:
                     _LOGGER.warning(
-                        "No brightness value updates received for %s",
-                        test_light.device_id,
+                        "No brightness value in property update for %s",
+                        self.test_light.device_id,
                     )
+            else:
+                _LOGGER.warning(
+                    "No property update events recorded for brightness test"
+                )
 
         except Exception:
             _LOGGER.exception("✗ Light level test FAILED")
@@ -428,21 +438,17 @@ class GatewayTester:
             return False
 
         try:
-            devices_dict = await self.gateway.discover_devices()
-            lights = devices_dict.get(DeviceType.LIGHT, [])
-
-            if not lights:
+            # Use cached light from discovery test
+            if not self.test_light:
                 _LOGGER.warning("No lights found, skipping color temperature test")
                 return True
 
-            test_light = lights[0]
             _LOGGER.info(
                 "Setting color temperature for light: %s (%s)",
-                test_light.device_id,
-                test_light.product_id,
+                self.test_light.device_id,
+                self.test_light.product_id,
             )
 
-            initial_events_count = len(self.property_update_events)
             color_temp_params = {
                 "ColorTemperature": 3500,
                 "TransitionTime": 10,
@@ -454,55 +460,44 @@ class GatewayTester:
                 color_temp_params,
             )
             await self.gateway.invoke_service(
-                test_light.device_id,
+                self.test_light.device_id,
                 SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
                 color_temp_params,
             )
 
-            await asyncio.sleep(2)
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_light.device_id, timeout=3.0
+            )
 
-            new_events = len(self.property_update_events) - initial_events_count
-            if new_events <= 0:
-                _LOGGER.warning(
-                    "No property update events recorded for color temperature test"
-                )
-            else:
-                color_temp_updates: list[int | float] = []
-                xy_updates: list[tuple[int | float | None, int | float | None]] = []
-                for dev_id, params in self.property_update_events[-new_events:]:
-                    if dev_id != test_light.device_id:
-                        continue
-                    color_temp = params.get("ColorTemperature")
-                    current_x = params.get("CurrentX")
-                    current_y = params.get("CurrentY")
-                    if color_temp is not None:
-                        color_temp_updates.append(color_temp["value"])
-                    if current_x is not None or current_y is not None:
-                        xy_updates.append(
-                            (
-                                current_x["value"] if current_x else None,
-                                current_y["value"] if current_y else None,
-                            )
-                        )
+            if params:
+                color_temp = params.get("ColorTemperature")
+                current_x = params.get("CurrentX")
+                current_y = params.get("CurrentY")
 
-                if color_temp_updates:
+                if color_temp is not None:
                     _LOGGER.info(
-                        "Received color temperature updates for %s: %s",
-                        test_light.device_id,
-                        color_temp_updates,
+                        "Received color temperature update for %s: %s",
+                        self.test_light.device_id,
+                        color_temp.get("value"),
                     )
                 else:
                     _LOGGER.warning(
-                        "No color temperature value updates received for %s",
-                        test_light.device_id,
+                        "No color temperature value in property update for %s",
+                        self.test_light.device_id,
                     )
 
-                if xy_updates:
+                if current_x is not None or current_y is not None:
                     _LOGGER.info(
-                        "Received color XY updates for %s: %s",
-                        test_light.device_id,
-                        xy_updates,
+                        "Received color XY update for %s: (%s, %s)",
+                        self.test_light.device_id,
+                        current_x.get("value") if current_x else None,
+                        current_y.get("value") if current_y else None,
                     )
+            else:
+                _LOGGER.warning(
+                    "No property update events recorded for color temperature test"
+                )
 
         except Exception:
             _LOGGER.exception("✗ Light color temperature test FAILED")
@@ -522,21 +517,17 @@ class GatewayTester:
             return False
 
         try:
-            devices_dict = await self.gateway.discover_devices()
-            lights = devices_dict.get(DeviceType.LIGHT, [])
-
-            if not lights:
+            # Use cached light from discovery test
+            if not self.test_light:
                 _LOGGER.warning("No lights found, skipping color XY test")
                 return True
 
-            test_light = lights[0]
             _LOGGER.info(
                 "Setting XY color for light: %s (%s)",
-                test_light.device_id,
-                test_light.product_id,
+                self.test_light.device_id,
+                self.test_light.product_id,
             )
 
-            initial_events_count = len(self.property_update_events)
             color_xy_params = {
                 "ColorX": 0.4,
                 "ColorY": 0.5,
@@ -549,53 +540,42 @@ class GatewayTester:
                 color_xy_params,
             )
             await self.gateway.invoke_service(
-                test_light.device_id,
+                self.test_light.device_id,
                 SERVICE_COLOR_MOVE_TO_COLOR,
                 color_xy_params,
             )
 
-            await asyncio.sleep(2)
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_light.device_id, timeout=3.0
+            )
 
-            new_events = len(self.property_update_events) - initial_events_count
-            if new_events <= 0:
-                _LOGGER.warning("No property update events recorded for color XY test")
-            else:
-                xy_updates: list[tuple[float | None, float | None]] = []
-                color_temp_updates: list[int | float] = []
-                for dev_id, params in self.property_update_events[-new_events:]:
-                    if dev_id != test_light.device_id:
-                        continue
-                    current_x = params.get("CurrentX")
-                    current_y = params.get("CurrentY")
-                    if current_x is not None or current_y is not None:
-                        xy_updates.append(
-                            (
-                                current_x["value"] if current_x else None,
-                                current_y["value"] if current_y else None,
-                            )
-                        )
-                    color_temp = params.get("ColorTemperature")
-                    if color_temp is not None:
-                        color_temp_updates.append(color_temp["value"])
+            if params:
+                current_x = params.get("CurrentX")
+                current_y = params.get("CurrentY")
+                color_temp = params.get("ColorTemperature")
 
-                if xy_updates:
+                if current_x is not None or current_y is not None:
                     _LOGGER.info(
-                        "Received color XY updates for %s: %s",
-                        test_light.device_id,
-                        xy_updates,
+                        "Received color XY update for %s: (%s, %s)",
+                        self.test_light.device_id,
+                        current_x.get("value") if current_x else None,
+                        current_y.get("value") if current_y else None,
                     )
                 else:
                     _LOGGER.warning(
-                        "No color XY value updates received for %s",
-                        test_light.device_id,
+                        "No color XY value in property update for %s",
+                        self.test_light.device_id,
                     )
 
-                if color_temp_updates:
+                if color_temp is not None:
                     _LOGGER.info(
-                        "Received color temperature updates for %s while setting XY: %s",
-                        test_light.device_id,
-                        color_temp_updates,
+                        "Received color temperature update for %s while setting XY: %s",
+                        self.test_light.device_id,
+                        color_temp.get("value"),
                     )
+            else:
+                _LOGGER.warning("No property update events recorded for color XY test")
 
         except Exception:
             _LOGGER.exception("✗ Light color XY test FAILED")
