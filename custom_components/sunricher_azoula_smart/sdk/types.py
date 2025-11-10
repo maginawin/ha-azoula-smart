@@ -26,6 +26,7 @@ class PropertyParams(TypedDict, total=False):
     CurrentY: PropertyValue  # CIE 1931 color space Y coordinate
     MotionSensorIntrusionIndication: PropertyValue  # 0 = normal, 1 = alarm
     OccupancyState: PropertyValue  # 0 = unoccupied, 1 = occupied
+    IllumMeasuredValue: PropertyValue  # Illuminance value 0.0001-3576000 Lux
 
 
 ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]

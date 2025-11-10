@@ -43,3 +43,4 @@ class DeviceType(Enum):
 
     LIGHT = "light"
     OCCUPANCY_SENSOR = "occupancy_sensor"
+    ILLUMINANCE_SENSOR = "illuminance_sensor"

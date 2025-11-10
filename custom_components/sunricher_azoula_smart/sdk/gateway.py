@@ -36,6 +36,7 @@ from .const import (
     DeviceType,
 )
 from .exceptions import AzoulaGatewayError
+from .illuminance_sensor import IlluminanceSensor
 from .light import Light
 from .occupancy_sensor import OccupancySensor
 from .types import ListenerCallback, PropertyParams
@@ -95,6 +96,7 @@ class AzoulaGateway:
         # Device discovery state
         self._discovered_lights: list[Light] = []
         self._discovered_occupancy_sensors: list[OccupancySensor] = []
+        self._discovered_illuminance_sensors: list[IlluminanceSensor] = []
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -263,11 +265,12 @@ class AzoulaGateway:
 
     async def discover_devices(
         self,
-    ) -> dict[DeviceType, list[Light] | list[OccupancySensor]]:
+    ) -> dict[DeviceType, list[Light] | list[OccupancySensor] | list[IlluminanceSensor]]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
         self._discovered_lights = []
         self._discovered_occupancy_sensors = []
+        self._discovered_illuminance_sensors = []
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -296,6 +299,7 @@ class AzoulaGateway:
         return {
             DeviceType.LIGHT: self._discovered_lights.copy(),
             DeviceType.OCCUPANCY_SENSOR: self._discovered_occupancy_sensors.copy(),
+            DeviceType.ILLUMINANCE_SENSOR: self._discovered_illuminance_sensors.copy(),
         }
 
     async def invoke_service(
@@ -385,6 +389,13 @@ class AzoulaGateway:
                     for d in self._discovered_occupancy_sensors
                 ):
                     self._discovered_occupancy_sensors.append(occupancy_sensor)
+            elif IlluminanceSensor.is_illuminance_sensor_device(device_data):
+                illuminance_sensor = IlluminanceSensor.from_dict(device_data)
+                if not any(
+                    d.unique_id == illuminance_sensor.unique_id
+                    for d in self._discovered_illuminance_sensors
+                ):
+                    self._discovered_illuminance_sensors.append(illuminance_sensor)
 
         self._current_page = current_page
 

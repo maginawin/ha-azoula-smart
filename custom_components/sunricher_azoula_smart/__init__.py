@@ -17,11 +17,12 @@ from .const import DOMAIN, MANUFACTURER
 from .sdk.const import DeviceType
 from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
+from .sdk.illuminance_sensor import IlluminanceSensor
 from .sdk.light import Light
 from .sdk.occupancy_sensor import OccupancySensor
 from .types import AzoulaSmartConfigEntry, AzoulaSmartData
 
-_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.BINARY_SENSOR]
+_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.BINARY_SENSOR, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
@@ -53,16 +54,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
 
     # Extract device lists with proper typing
     lights_raw = devices.get(DeviceType.LIGHT, [])
-    sensors_raw = devices.get(DeviceType.OCCUPANCY_SENSOR, [])
+    occupancy_sensors_raw = devices.get(DeviceType.OCCUPANCY_SENSOR, [])
+    illuminance_sensors_raw = devices.get(DeviceType.ILLUMINANCE_SENSOR, [])
 
     # Type narrowing through instance checks
     lights = [d for d in lights_raw if isinstance(d, Light)]
-    occupancy_sensors = [d for d in sensors_raw if isinstance(d, OccupancySensor)]
+    occupancy_sensors = [
+        d for d in occupancy_sensors_raw if isinstance(d, OccupancySensor)
+    ]
+    illuminance_sensors = [
+        d for d in illuminance_sensors_raw if isinstance(d, IlluminanceSensor)
+    ]
 
     entry.runtime_data = AzoulaSmartData(
         gateway=gateway,
         lights=lights,
         occupancy_sensors=occupancy_sensors,
+        illuminance_sensors=illuminance_sensors,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)

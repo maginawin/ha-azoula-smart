@@ -33,6 +33,13 @@ from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
 from custom_components.sunricher_azoula_smart.sdk.gateway import (  # noqa: E402
     AzoulaGateway,
 )
+from custom_components.sunricher_azoula_smart.sdk.illuminance_sensor import (  # noqa: E402
+    IlluminanceSensor,
+)
+from custom_components.sunricher_azoula_smart.sdk.light import Light  # noqa: E402
+from custom_components.sunricher_azoula_smart.sdk.occupancy_sensor import (  # noqa: E402
+    OccupancySensor,
+)
 from custom_components.sunricher_azoula_smart.sdk.types import (  # noqa: E402
     PropertyParams,
 )
@@ -66,8 +73,9 @@ class GatewayTester:
 
         # Device discovery cache
         self.discovered_devices: dict[DeviceType, list[Any]] = {}
-        self.test_light: Any = None
-        self.test_occupancy_sensor: Any = None
+        self.test_light: Light | None = None
+        self.test_occupancy_sensor: OccupancySensor | None = None
+        self.test_illuminance_sensor: IlluminanceSensor | None = None
 
         # Event waiting support
         self._pending_online_status: bool | None = None
@@ -254,6 +262,22 @@ class GatewayTester:
             # Cache the first occupancy sensor for subsequent tests
             if occupancy_sensors:
                 self.test_occupancy_sensor = occupancy_sensors[0]
+
+            illuminance_sensors = self.discovered_devices.get(DeviceType.ILLUMINANCE_SENSOR, [])
+            _LOGGER.info("Found %d illuminance sensor(s):", len(illuminance_sensors))
+            for sensor in illuminance_sensors:
+                online_status = "online" if sensor.online else "offline"
+                _LOGGER.info(
+                    "  - %s (%s) [%s] - %s",
+                    sensor.device_id,
+                    sensor.product_id,
+                    sensor.protocol,
+                    online_status,
+                )
+
+            # Cache the first illuminance sensor for subsequent tests
+            if illuminance_sensors:
+                self.test_illuminance_sensor = illuminance_sensors[0]
 
         except Exception:
             _LOGGER.exception("✗ Device discovery test FAILED")
@@ -601,10 +625,71 @@ class GatewayTester:
             _LOGGER.info("✓ Light color XY test PASSED")
             return True
 
+    async def test_illuminance_sensor_monitoring(self) -> bool:
+        """Test illuminance sensor property monitoring."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 10: Illuminance Sensor Monitoring Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Illuminance sensor monitoring test FAILED: No gateway instance")
+            return False
+
+        try:
+            # Use cached illuminance sensor from discovery test
+            if not self.test_illuminance_sensor:
+                _LOGGER.warning("No illuminance sensors found, skipping illuminance sensor test")
+                return True
+
+            _LOGGER.info(
+                "Monitoring illuminance sensor: %s (%s)",
+                self.test_illuminance_sensor.device_id,
+                self.test_illuminance_sensor.product_id,
+            )
+
+            # Request current property values
+            properties = ["IllumMeasuredValue"]
+
+            _LOGGER.info("Requesting properties: %s", properties)
+            await self.gateway.get_device_properties(
+                self.test_illuminance_sensor.device_id,
+                properties,
+            )
+
+            # Wait for property update using event
+            params = await self._wait_for_property_update(
+                self.test_illuminance_sensor.device_id, timeout=3.0
+            )
+
+            if params:
+                _LOGGER.info(
+                    "Properties received for %s:", self.test_illuminance_sensor.device_id
+                )
+                for prop_name, prop_data in params.items():
+                    if isinstance(prop_data, dict) and "value" in prop_data:
+                        value = prop_data["value"] # pyright: ignore[reportUnknownVariableType]
+                        _LOGGER.info("  - %s: %s Lux", prop_name, value) # pyright: ignore[reportUnknownArgumentType]
+            else:
+                _LOGGER.warning(
+                    "No property update events recorded for illuminance sensor test"
+                )
+
+            _LOGGER.info(
+                "Illuminance sensor is now being monitored. "
+                "Any illuminance changes will trigger property updates."
+            )
+
+        except Exception:
+            _LOGGER.exception("✗ Illuminance sensor monitoring test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Illuminance sensor monitoring test PASSED")
+            return True
+
     async def test_occupancy_sensor_monitoring(self) -> bool:
         """Test occupancy sensor property monitoring."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 10: Occupancy Sensor Monitoring Test")
+        _LOGGER.info("Test 11: Occupancy Sensor Monitoring Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
@@ -713,7 +798,11 @@ class GatewayTester:
             result = await self.test_light_color_xy()
             results.append(("Light Color XY", result))
 
-            # Test 10: Occupancy Sensor Monitoring
+            # Test 10: Illuminance Sensor Monitoring
+            result = await self.test_illuminance_sensor_monitoring()
+            results.append(("Illuminance Sensor Monitoring", result))
+
+            # Test 11: Occupancy Sensor Monitoring
             result = await self.test_occupancy_sensor_monitoring()
             results.append(("Occupancy Sensor Monitoring", result))
 
