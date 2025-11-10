@@ -14,7 +14,6 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any
 
 from dotenv import load_dotenv
 
@@ -29,17 +28,12 @@ from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
     SERVICE_ONOFF_OFF,
     SERVICE_ONOFF_ON,
     CallbackEventType,
-    DeviceType,
+)
+from custom_components.sunricher_azoula_smart.sdk.device import (  # noqa: E402
+    AzoulaDevice,
 )
 from custom_components.sunricher_azoula_smart.sdk.gateway import (  # noqa: E402
     AzoulaGateway,
-)
-from custom_components.sunricher_azoula_smart.sdk.illuminance_sensor import (  # noqa: E402
-    IlluminanceSensor,
-)
-from custom_components.sunricher_azoula_smart.sdk.light import Light  # noqa: E402
-from custom_components.sunricher_azoula_smart.sdk.occupancy_sensor import (  # noqa: E402
-    OccupancySensor,
 )
 from custom_components.sunricher_azoula_smart.sdk.types import (  # noqa: E402
     PropertyParams,
@@ -73,10 +67,10 @@ class GatewayTester:
         self.property_update_events: list[tuple[str, PropertyParams]] = []
 
         # Device discovery cache
-        self.discovered_devices: dict[DeviceType, list[Any]] = {}
-        self.test_light: Light | None = None
-        self.test_occupancy_sensor: OccupancySensor | None = None
-        self.test_illuminance_sensor: IlluminanceSensor | None = None
+        self.discovered_devices: list[AzoulaDevice] = []
+        self.test_light: AzoulaDevice | None = None
+        self.test_occupancy_sensor: AzoulaDevice | None = None
+        self.test_illuminance_sensor: AzoulaDevice | None = None
 
         # Event waiting support
         self._pending_online_status: bool | None = None
@@ -229,10 +223,11 @@ class GatewayTester:
         try:
             _LOGGER.info("Discovering devices from gateway %s...", self.gateway_id)
 
-            # Discover devices and cache the results
+            # Discover devices and cache the results (now returns list of AzoulaDevice)
             self.discovered_devices = await self.gateway.discover_devices()
 
-            lights = self.discovered_devices.get(DeviceType.LIGHT, [])
+            # Categorize devices by their capabilities
+            lights = [d for d in self.discovered_devices if d.has_property("OnOff")]
             _LOGGER.info("Found %d light(s):", len(lights))
             for light in lights:
                 online_status = "online" if light.online else "offline"
@@ -248,9 +243,9 @@ class GatewayTester:
             if lights:
                 self.test_light = lights[0]
 
-            occupancy_sensors = self.discovered_devices.get(
-                DeviceType.OCCUPANCY_SENSOR, []
-            )
+            occupancy_sensors = [
+                d for d in self.discovered_devices if d.has_property("OccupancyState")
+            ]
             _LOGGER.info("Found %d occupancy sensor(s):", len(occupancy_sensors))
             for sensor in occupancy_sensors:
                 online_status = "online" if sensor.online else "offline"
@@ -266,9 +261,11 @@ class GatewayTester:
             if occupancy_sensors:
                 self.test_occupancy_sensor = occupancy_sensors[0]
 
-            illuminance_sensors = self.discovered_devices.get(
-                DeviceType.ILLUMINANCE_SENSOR, []
-            )
+            illuminance_sensors = [
+                d
+                for d in self.discovered_devices
+                if d.has_property("IllumMeasuredValue")
+            ]
             _LOGGER.info("Found %d illuminance sensor(s):", len(illuminance_sensors))
             for sensor in illuminance_sensors:
                 online_status = "online" if sensor.online else "offline"
@@ -365,16 +362,13 @@ class GatewayTester:
                 self.test_light.product_id,
             )
 
+            # Build property list based on device TSL capabilities
             properties = ["OnOff", "CurrentLevel"]
-            if (
-                "CCT" in self.test_light.product_id
-                or "RGBCCT" in self.test_light.product_id
-            ):
+            if self.test_light.has_property("ColorTemperature"):
                 properties.append("ColorTemperature")
-            if (
-                "RGB" in self.test_light.product_id
-                or "RGBCCT" in self.test_light.product_id
-            ):
+            if self.test_light.has_property(
+                "CurrentX"
+            ) and self.test_light.has_property("CurrentY"):
                 properties.extend(["CurrentX", "CurrentY"])
 
             _LOGGER.info("Requesting properties: %s", properties)

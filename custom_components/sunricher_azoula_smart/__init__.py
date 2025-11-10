@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+import logging
+
 from homeassistant.const import (
     CONF_HOST,
     CONF_ID,
@@ -14,15 +17,45 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, MANUFACTURER
-from .sdk.const import DeviceType
+from .sdk.capability_detector import CapabilityDetector
+from .sdk.device import AzoulaDevice
 from .sdk.exceptions import AzoulaGatewayError
 from .sdk.gateway import AzoulaGateway
-from .sdk.illuminance_sensor import IlluminanceSensor
-from .sdk.light import Light
-from .sdk.occupancy_sensor import OccupancySensor
 from .types import AzoulaSmartConfigEntry, AzoulaSmartData
 
-_PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.BINARY_SENSOR, Platform.SENSOR]
+_LOGGER = logging.getLogger(__name__)
+
+
+def _remove_missing_devices(
+    hass: HomeAssistant,
+    entry: AzoulaSmartConfigEntry,
+    devices: Sequence[AzoulaDevice],
+    gateway_identifier: tuple[str, str],
+) -> None:
+    """Detach devices that are no longer provided by the gateway."""
+    device_registry = dr.async_get(hass)
+    known_device_ids = {device.device_id for device in devices}
+
+    for device_entry in dr.async_entries_for_config_entry(
+        device_registry, entry.entry_id
+    ):
+        if gateway_identifier in device_entry.identifiers:
+            continue
+
+        domain_device_ids = {
+            identifier[1]
+            for identifier in device_entry.identifiers
+            if identifier[0] == DOMAIN
+        }
+
+        if not domain_device_ids:
+            continue
+
+        if domain_device_ids.isdisjoint(known_device_ids):
+            device_registry.async_update_device(
+                device_entry.id,
+                remove_config_entry_id=entry.entry_id,
+            )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) -> bool:
@@ -50,30 +83,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         serial_number=gateway.gateway_id,
     )
 
-    devices = await gateway.discover_devices()
+    # Discover devices with TSL loading
+    devices = await gateway.discover_devices(load_tsl=True)
+    _remove_missing_devices(hass, entry, devices, (DOMAIN, gateway.gateway_id))
 
-    # Extract device lists with proper typing
-    lights_raw = devices.get(DeviceType.LIGHT, [])
-    occupancy_sensors_raw = devices.get(DeviceType.OCCUPANCY_SENSOR, [])
-    illuminance_sensors_raw = devices.get(DeviceType.ILLUMINANCE_SENSOR, [])
+    _LOGGER.info(
+        "Discovered %d device(s) on gateway %s",
+        len(devices),
+        gateway.gateway_id,
+    )
 
-    # Type narrowing through instance checks
-    lights = [d for d in lights_raw if isinstance(d, Light)]
-    occupancy_sensors = [
-        d for d in occupancy_sensors_raw if isinstance(d, OccupancySensor)
-    ]
-    illuminance_sensors = [
-        d for d in illuminance_sensors_raw if isinstance(d, IlluminanceSensor)
-    ]
+    # Determine which platforms are needed based on device capabilities
+    required_platforms: set[str] = set()
+    for device in devices:
+        platforms = CapabilityDetector.get_required_platforms(device)
+        required_platforms.update(platforms)
+        _LOGGER.debug(
+            "Device %s (%s) supports platforms: %s",
+            device.device_id,
+            device.name,
+            platforms,
+        )
 
     entry.runtime_data = AzoulaSmartData(
         gateway=gateway,
-        lights=lights,
-        occupancy_sensors=occupancy_sensors,
-        illuminance_sensors=illuminance_sensors,
+        devices=devices,
     )
 
-    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+    # Only forward to platforms that are actually needed
+    # Map platform strings to Platform enum values
+    platform_map = {
+        "light": Platform.LIGHT,
+        "sensor": Platform.SENSOR,
+        "binary_sensor": Platform.BINARY_SENSOR,
+    }
+    platforms_to_load = [
+        platform_map[p] for p in required_platforms if p in platform_map
+    ]
+
+    if platforms_to_load:
+        await hass.config_entries.async_forward_entry_setups(entry, platforms_to_load)
 
     return True
 
@@ -82,5 +131,27 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: AzoulaSmartConfigEntry
 ) -> bool:
     """Unload a config entry."""
+    # Determine which platforms were loaded
+    required_platforms: set[str] = set()
+    for device in entry.runtime_data.devices:
+        platforms = CapabilityDetector.get_required_platforms(device)
+        required_platforms.update(platforms)
+
+    # Map platform strings to Platform enum values
+    platform_map = {
+        "light": Platform.LIGHT,
+        "sensor": Platform.SENSOR,
+        "binary_sensor": Platform.BINARY_SENSOR,
+    }
+    platforms_to_unload = [
+        platform_map[p] for p in required_platforms if p in platform_map
+    ]
+
     await entry.runtime_data.gateway.disconnect()
-    return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
+
+    if platforms_to_unload:
+        return await hass.config_entries.async_unload_platforms(
+            entry, platforms_to_unload
+        )
+
+    return True

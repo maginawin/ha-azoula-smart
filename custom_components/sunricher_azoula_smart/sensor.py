@@ -15,8 +15,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .sdk.const import CallbackEventType
+from .sdk.device import AzoulaDevice
 from .sdk.gateway import AzoulaGateway
-from .sdk.illuminance_sensor import IlluminanceSensor
 from .sdk.types import PropertyParams
 from .types import AzoulaSmartConfigEntry
 
@@ -29,13 +29,21 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Azoula Smart sensors from a config entry."""
+    entities = []
 
-    async_add_entities(
-        [
-            AzoulaIlluminanceSensor(sensor, entry.runtime_data.gateway)
-            for sensor in entry.runtime_data.illuminance_sensors
-        ]
-    )
+    for device in entry.runtime_data.devices:
+        # Check which sensor capabilities this device has
+        if device.has_property("IllumMeasuredValue"):
+            entities.append(AzoulaIlluminanceSensor(device, entry.runtime_data.gateway))
+
+        # Future sensor types can be added here
+        # if device.has_property("Temperature"):
+        #     entities.append(AzoulaTemperatureSensor(device, gateway))
+        # if device.has_property("Humidity"):
+        #     entities.append(AzoulaHumiditySensor(device, gateway))
+
+    if entities:
+        async_add_entities(entities)
 
 
 class AzoulaIlluminanceSensor(SensorEntity):
@@ -46,18 +54,18 @@ class AzoulaIlluminanceSensor(SensorEntity):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = LIGHT_LUX
 
-    def __init__(self, sensor: IlluminanceSensor, gateway: AzoulaGateway) -> None:
+    def __init__(self, device: AzoulaDevice, gateway: AzoulaGateway) -> None:
         """Initialize the sensor entity."""
-        self._sensor = sensor
+        self._device = device
         self._gateway = gateway
         self._attr_name = "Illuminance"
-        self._attr_unique_id = sensor.unique_id
-        self._attr_available = sensor.online
+        self._attr_unique_id = f"{device.device_id}-illuminance"
+        self._attr_available = device.online
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, sensor.device_id)},
-            "name": sensor.name,
-            "manufacturer": sensor.manufacturer,
-            "model": sensor.product_id,
+            "identifiers": {(DOMAIN, device.device_id)},
+            "name": device.name,
+            "manufacturer": device.manufacturer,
+            "model": device.product_id,
             "via_device": (DOMAIN, gateway.gateway_id),
         }
 
@@ -77,18 +85,18 @@ class AzoulaIlluminanceSensor(SensorEntity):
         )
 
         await self._gateway.get_device_properties(
-            self._sensor.device_id,
+            self._device.device_id,
             ["IllumMeasuredValue"],
         )
 
         _LOGGER.debug(
             "Requested initial properties for illuminance sensor %s",
-            self._sensor.device_id,
+            self._device.device_id,
         )
 
     @callback
     def _handle_device_update(self, dev_id: str, status: PropertyParams) -> None:
-        if dev_id != self._attr_unique_id:
+        if dev_id != self._device.device_id:
             return
 
         if "IllumMeasuredValue" in status:
@@ -98,7 +106,7 @@ class AzoulaIlluminanceSensor(SensorEntity):
 
     @callback
     def _handle_availability(self, dev_id: str, available: bool) -> None:
-        if dev_id not in (self._sensor.device_id, self._gateway.gateway_id):
+        if dev_id not in (self._device.device_id, self._gateway.gateway_id):
             return
 
         self._attr_available = available

@@ -37,12 +37,9 @@ from .const import (
     TOPIC_PLATFORM_APP_PREFIX,
     TSL_LANGUAGE_ENGLISH,
     CallbackEventType,
-    DeviceType,
 )
+from .device import AzoulaDevice
 from .exceptions import AzoulaGatewayError
-from .illuminance_sensor import IlluminanceSensor
-from .light import Light
-from .occupancy_sensor import OccupancySensor
 from .types import DeviceTSL, ListenerCallback, PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,9 +95,7 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._discovered_lights: list[Light] = []
-        self._discovered_occupancy_sensors: list[OccupancySensor] = []
-        self._discovered_illuminance_sensors: list[IlluminanceSensor] = []
+        self._discovered_devices: list[AzoulaDevice] = []
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
@@ -274,14 +269,18 @@ class AzoulaGateway:
 
     async def discover_devices(
         self,
-    ) -> dict[
-        DeviceType, list[Light] | list[OccupancySensor] | list[IlluminanceSensor]
-    ]:
-        """Discover all sub-devices under the gateway."""
+        load_tsl: bool = True,
+    ) -> list[AzoulaDevice]:
+        """Discover all sub-devices under the gateway.
+
+        Args:
+            load_tsl: If True, automatically load TSL for each discovered device
+
+        Returns:
+            List of discovered AzoulaDevice instances
+        """
         self._devices_received = asyncio.Event()
-        self._discovered_lights = []
-        self._discovered_occupancy_sensors = []
-        self._discovered_illuminance_sensors = []
+        self._discovered_devices = []
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -307,11 +306,18 @@ class AzoulaGateway:
                 self.gateway_id,
             )
 
-        return {
-            DeviceType.LIGHT: self._discovered_lights.copy(),
-            DeviceType.OCCUPANCY_SENSOR: self._discovered_occupancy_sensors.copy(),
-            DeviceType.ILLUMINANCE_SENSOR: self._discovered_illuminance_sensors.copy(),
-        }
+        # Load TSL for each discovered device if requested
+        if load_tsl:
+            for device in self._discovered_devices:
+                _LOGGER.debug(
+                    "Loading TSL for device %s (%s)",
+                    device.device_id,
+                    device.name,
+                )
+                tsl = await self.get_device_tsl(device.device_id)
+                device.tsl = tsl
+
+        return self._discovered_devices.copy()
 
     async def invoke_service(
         self,
@@ -445,26 +451,12 @@ class AzoulaGateway:
         device_list = data.get("deviceList", [])
 
         for device_data in device_list:
-            if Light.is_light_device(device_data):
-                light = Light.from_dict(device_data)
-                if not any(
-                    d.unique_id == light.unique_id for d in self._discovered_lights
-                ):
-                    self._discovered_lights.append(light)
-            elif OccupancySensor.is_occupancy_sensor_device(device_data):
-                occupancy_sensor = OccupancySensor.from_dict(device_data)
-                if not any(
-                    d.unique_id == occupancy_sensor.unique_id
-                    for d in self._discovered_occupancy_sensors
-                ):
-                    self._discovered_occupancy_sensors.append(occupancy_sensor)
-            elif IlluminanceSensor.is_illuminance_sensor_device(device_data):
-                illuminance_sensor = IlluminanceSensor.from_dict(device_data)
-                if not any(
-                    d.unique_id == illuminance_sensor.unique_id
-                    for d in self._discovered_illuminance_sensors
-                ):
-                    self._discovered_illuminance_sensors.append(illuminance_sensor)
+            device = AzoulaDevice.from_dict(device_data)
+            # Avoid duplicates
+            if not any(
+                d.unique_id == device.unique_id for d in self._discovered_devices
+            ):
+                self._discovered_devices.append(device)
 
         self._current_page = current_page
 
