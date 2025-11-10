@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -247,7 +248,9 @@ class GatewayTester:
             if lights:
                 self.test_light = lights[0]
 
-            occupancy_sensors = self.discovered_devices.get(DeviceType.OCCUPANCY_SENSOR, [])
+            occupancy_sensors = self.discovered_devices.get(
+                DeviceType.OCCUPANCY_SENSOR, []
+            )
             _LOGGER.info("Found %d occupancy sensor(s):", len(occupancy_sensors))
             for sensor in occupancy_sensors:
                 online_status = "online" if sensor.online else "offline"
@@ -263,7 +266,9 @@ class GatewayTester:
             if occupancy_sensors:
                 self.test_occupancy_sensor = occupancy_sensors[0]
 
-            illuminance_sensors = self.discovered_devices.get(DeviceType.ILLUMINANCE_SENSOR, [])
+            illuminance_sensors = self.discovered_devices.get(
+                DeviceType.ILLUMINANCE_SENSOR, []
+            )
             _LOGGER.info("Found %d illuminance sensor(s):", len(illuminance_sensors))
             for sensor in illuminance_sensors:
                 online_status = "online" if sensor.online else "offline"
@@ -387,7 +392,7 @@ class GatewayTester:
                 _LOGGER.info("Properties received for %s:", self.test_light.device_id)
                 for prop_name, prop_data in params.items():
                     if isinstance(prop_data, dict) and "value" in prop_data:
-                        _LOGGER.info("  - %s: %s", prop_name, prop_data["value"]) # pyright: ignore[reportUnknownArgumentType]
+                        _LOGGER.info("  - %s: %s", prop_name, prop_data["value"])  # pyright: ignore[reportUnknownArgumentType]
             else:
                 _LOGGER.warning(
                     "No property update events recorded for property get test"
@@ -632,13 +637,17 @@ class GatewayTester:
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
-            _LOGGER.error("✗ Illuminance sensor monitoring test FAILED: No gateway instance")
+            _LOGGER.error(
+                "✗ Illuminance sensor monitoring test FAILED: No gateway instance"
+            )
             return False
 
         try:
             # Use cached illuminance sensor from discovery test
             if not self.test_illuminance_sensor:
-                _LOGGER.warning("No illuminance sensors found, skipping illuminance sensor test")
+                _LOGGER.warning(
+                    "No illuminance sensors found, skipping illuminance sensor test"
+                )
                 return True
 
             _LOGGER.info(
@@ -663,12 +672,13 @@ class GatewayTester:
 
             if params:
                 _LOGGER.info(
-                    "Properties received for %s:", self.test_illuminance_sensor.device_id
+                    "Properties received for %s:",
+                    self.test_illuminance_sensor.device_id,
                 )
                 for prop_name, prop_data in params.items():
                     if isinstance(prop_data, dict) and "value" in prop_data:
-                        value = prop_data["value"] # pyright: ignore[reportUnknownVariableType]
-                        _LOGGER.info("  - %s: %s Lux", prop_name, value) # pyright: ignore[reportUnknownArgumentType]
+                        value = prop_data["value"]  # pyright: ignore[reportUnknownVariableType]
+                        _LOGGER.info("  - %s: %s Lux", prop_name, value)  # pyright: ignore[reportUnknownArgumentType]
             else:
                 _LOGGER.warning(
                     "No property update events recorded for illuminance sensor test"
@@ -686,20 +696,175 @@ class GatewayTester:
             _LOGGER.info("✓ Illuminance sensor monitoring test PASSED")
             return True
 
-    async def test_occupancy_sensor_monitoring(self) -> bool:
-        """Test occupancy sensor property monitoring."""
+    async def test_device_tsl(self) -> bool:
+        """Test device TSL (Thing Specification Language) retrieval."""
         _LOGGER.info("=" * 60)
-        _LOGGER.info("Test 11: Occupancy Sensor Monitoring Test")
+        _LOGGER.info("Test 11: Device TSL Retrieval Test")
         _LOGGER.info("=" * 60)
 
         if not self.gateway:
-            _LOGGER.error("✗ Occupancy sensor monitoring test FAILED: No gateway instance")
+            _LOGGER.error("✗ Device TSL test FAILED: No gateway instance")
+            return False
+
+        # Create doc directory for TSL files
+        doc_dir = project_root / "doc" / "tsl"
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        _LOGGER.info("TSL files will be saved to: %s", doc_dir)
+        _LOGGER.info("")
+
+        try:
+            # Test TSL for light if available
+            if self.test_light:
+                _LOGGER.info(
+                    "Getting TSL for light: %s (%s)",
+                    self.test_light.device_id,
+                    self.test_light.product_id,
+                )
+
+                tsl = await self.gateway.get_device_tsl(self.test_light.device_id)
+
+                if tsl:
+                    _LOGGER.info(
+                        "✓ TSL received for light %s:", self.test_light.device_id
+                    )
+                    _LOGGER.info("  - Profile: %s", tsl.get("profile"))
+                    _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
+                    _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
+                    _LOGGER.info("  - Services: %d", len(tsl.get("services", [])))
+                    _LOGGER.info("  - Events: %d", len(tsl.get("events", [])))
+
+                    # Log some property details
+                    properties = tsl.get("properties", [])
+                    if properties:
+                        _LOGGER.info("  - Sample properties:")
+                        for prop in properties[:5]:  # Show first 5 properties
+                            _LOGGER.info(
+                                "    * %s (%s): %s",
+                                prop.get("identifier"),
+                                prop.get("name"),
+                                prop.get("accessMode"),
+                            )
+
+                    # Save TSL to JSON file
+                    tsl_file = doc_dir / f"light_{self.test_light.product_id}.json"
+                    with open(tsl_file, "w", encoding="utf-8") as f:
+                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    _LOGGER.info("  - Saved to: %s", tsl_file.name)
+                else:
+                    _LOGGER.warning(
+                        "No TSL received for light %s", self.test_light.device_id
+                    )
+                _LOGGER.info("")
+
+            # Test TSL for occupancy sensor if available
+            if self.test_occupancy_sensor:
+                _LOGGER.info(
+                    "Getting TSL for occupancy sensor: %s (%s)",
+                    self.test_occupancy_sensor.device_id,
+                    self.test_occupancy_sensor.product_id,
+                )
+
+                tsl = await self.gateway.get_device_tsl(
+                    self.test_occupancy_sensor.device_id
+                )
+
+                if tsl:
+                    _LOGGER.info(
+                        "✓ TSL received for occupancy sensor %s:",
+                        self.test_occupancy_sensor.device_id,
+                    )
+                    _LOGGER.info("  - Profile: %s", tsl.get("profile"))
+                    _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
+                    _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
+                    _LOGGER.info("  - Services: %d", len(tsl.get("services", [])))
+                    _LOGGER.info("  - Events: %d", len(tsl.get("events", [])))
+
+                    # Save TSL to JSON file
+                    tsl_file = (
+                        doc_dir
+                        / f"occupancy_sensor_{self.test_occupancy_sensor.product_id}.json"
+                    )
+                    with open(tsl_file, "w", encoding="utf-8") as f:
+                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    _LOGGER.info("  - Saved to: %s", tsl_file.name)
+                else:
+                    _LOGGER.warning(
+                        "No TSL received for occupancy sensor %s",
+                        self.test_occupancy_sensor.device_id,
+                    )
+                _LOGGER.info("")
+
+            # Test TSL for illuminance sensor if available
+            if self.test_illuminance_sensor:
+                _LOGGER.info(
+                    "Getting TSL for illuminance sensor: %s (%s)",
+                    self.test_illuminance_sensor.device_id,
+                    self.test_illuminance_sensor.product_id,
+                )
+
+                tsl = await self.gateway.get_device_tsl(
+                    self.test_illuminance_sensor.device_id
+                )
+
+                if tsl:
+                    _LOGGER.info(
+                        "✓ TSL received for illuminance sensor %s:",
+                        self.test_illuminance_sensor.device_id,
+                    )
+                    _LOGGER.info("  - Profile: %s", tsl.get("profile"))
+                    _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
+                    _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
+                    _LOGGER.info("  - Services: %d", len(tsl.get("services", [])))
+                    _LOGGER.info("  - Events: %d", len(tsl.get("events", [])))
+
+                    # Save TSL to JSON file
+                    tsl_file = (
+                        doc_dir
+                        / f"illuminance_sensor_{self.test_illuminance_sensor.product_id}.json"
+                    )
+                    with open(tsl_file, "w", encoding="utf-8") as f:
+                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    _LOGGER.info("  - Saved to: %s", tsl_file.name)
+                else:
+                    _LOGGER.warning(
+                        "No TSL received for illuminance sensor %s",
+                        self.test_illuminance_sensor.device_id,
+                    )
+                _LOGGER.info("")
+
+            if (
+                not self.test_light
+                and not self.test_occupancy_sensor
+                and not self.test_illuminance_sensor
+            ):
+                _LOGGER.warning("No devices found to test TSL retrieval")
+                return True
+
+        except Exception:
+            _LOGGER.exception("✗ Device TSL test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Device TSL test PASSED")
+            return True
+
+    async def test_occupancy_sensor_monitoring(self) -> bool:
+        """Test occupancy sensor property monitoring."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 12: Occupancy Sensor Monitoring Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error(
+                "✗ Occupancy sensor monitoring test FAILED: No gateway instance"
+            )
             return False
 
         try:
             # Use cached occupancy sensor from discovery test
             if not self.test_occupancy_sensor:
-                _LOGGER.warning("No occupancy sensors found, skipping occupancy sensor test")
+                _LOGGER.warning(
+                    "No occupancy sensors found, skipping occupancy sensor test"
+                )
                 return True
 
             _LOGGER.info(
@@ -728,9 +893,9 @@ class GatewayTester:
                 )
                 for prop_name, prop_data in params.items():
                     if isinstance(prop_data, dict) and "value" in prop_data:
-                        value = prop_data["value"] # pyright: ignore[reportUnknownVariableType]
+                        value = prop_data["value"]  # pyright: ignore[reportUnknownVariableType]
                         status = "occupied" if value == 1 else "unoccupied"
-                        _LOGGER.info("  - %s: %s (%s)", prop_name, value, status) # pyright: ignore[reportUnknownArgumentType]
+                        _LOGGER.info("  - %s: %s (%s)", prop_name, value, status)  # pyright: ignore[reportUnknownArgumentType]
             else:
                 _LOGGER.warning(
                     "No property update events recorded for occupancy sensor test"
@@ -802,7 +967,11 @@ class GatewayTester:
             result = await self.test_illuminance_sensor_monitoring()
             results.append(("Illuminance Sensor Monitoring", result))
 
-            # Test 11: Occupancy Sensor Monitoring
+            # Test 11: Device TSL Retrieval
+            result = await self.test_device_tsl()
+            results.append(("Device TSL Retrieval", result))
+
+            # Test 12: Occupancy Sensor Monitoring
             result = await self.test_occupancy_sensor_monitoring()
             results.append(("Occupancy Sensor Monitoring", result))
 

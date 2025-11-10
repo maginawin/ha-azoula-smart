@@ -9,6 +9,11 @@ TOPIC_PLATFORM_APP_PREFIX = "meribee/platform-app"
 # Default values
 DEFAULT_MQTT_PORT = 1883
 DEFAULT_DISCOVERY_TIMEOUT = 30.0  # seconds
+DEFAULT_TSL_TIMEOUT = 10.0  # seconds
+
+# TSL language options
+TSL_LANGUAGE_ENGLISH = "english"
+TSL_LANGUAGE_CHINESE = "chinese"
 
 # SRLink Protocol Methods
 METHOD_DEVICE_DISCOVER = "thing.subdev.getall"
@@ -18,6 +23,8 @@ METHOD_SERVICE_INVOKE_REPLY = "thing.service.reply"
 METHOD_PROPERTY_POST = "thing.event.property.post"
 METHOD_PROPERTY_GET = "thing.service.property.get"
 METHOD_PROPERTY_GET_REPLY = "thing.service.property.get.reply"
+METHOD_TSL_GET = "thing.tsl"
+METHOD_TSL_GET_REPLY = "thing.tsl.reply"
 
 # Property service identifiers
 SERVICE_PROPERTY_GET = "get"
