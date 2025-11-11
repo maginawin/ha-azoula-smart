@@ -22,6 +22,7 @@ except ImportError:
 from .const import (
     DEFAULT_DISCOVERY_TIMEOUT,
     DEFAULT_MQTT_PORT,
+    DEFAULT_TSL_TIMEOUT,
     METHOD_DEVICE_DISCOVER,
     METHOD_DEVICE_DISCOVER_REPLY,
     METHOD_PROPERTY_GET,
@@ -29,15 +30,17 @@ from .const import (
     METHOD_PROPERTY_POST,
     METHOD_SERVICE_INVOKE,
     METHOD_SERVICE_INVOKE_REPLY,
+    METHOD_TSL_GET,
+    METHOD_TSL_GET_REPLY,
     SERVICE_PROPERTY_GET,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
+    TSL_LANGUAGE_ENGLISH,
     CallbackEventType,
-    DeviceType,
 )
+from .device import AzoulaDevice
 from .exceptions import AzoulaGatewayError
-from .light import Light
-from .types import ListenerCallback, PropertyParams
+from .types import DeviceTSL, ListenerCallback, PropertyParams
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,10 +95,14 @@ class AzoulaGateway:
         self._background_tasks: set[asyncio.Task[None]] = set()
 
         # Device discovery state
-        self._devices_result: dict[DeviceType, list[Light]] = {}
+        self._discovered_devices: list[AzoulaDevice] = []
         self._devices_received: asyncio.Event | None = None
         self._expected_page_count: int = 0
         self._current_page: int = 0
+
+        # TSL (Thing Specification Language) state
+        self._tsl_pending_requests: dict[str, asyncio.Event] = {}
+        self._tsl_responses: dict[str, DeviceTSL | None] = {}
 
     def register_listener(
         self,
@@ -249,6 +256,7 @@ class AzoulaGateway:
             METHOD_PROPERTY_POST: self._handle_property_post,
             METHOD_PROPERTY_GET_REPLY: self._handle_property_get_reply,
             METHOD_SERVICE_INVOKE_REPLY: self._handle_service_reply,
+            METHOD_TSL_GET_REPLY: self._handle_tsl_reply,
         }
 
         handler = method_handlers.get(method)
@@ -259,10 +267,13 @@ class AzoulaGateway:
                 "Unhandled method %s from gateway %s", method, self.gateway_id
             )
 
-    async def discover_devices(self) -> dict[DeviceType, list[Light]]:
+    async def discover_devices(
+        self,
+        load_tsl: bool = True,
+    ) -> list[AzoulaDevice]:
         """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
-        self._devices_result = {DeviceType.LIGHT: []}
+        self._discovered_devices = []
         self._expected_page_count = 0
         self._current_page = 0
 
@@ -288,7 +299,17 @@ class AzoulaGateway:
                 self.gateway_id,
             )
 
-        return self._devices_result.copy()
+        if load_tsl:
+            for device in self._discovered_devices:
+                _LOGGER.debug(
+                    "Loading TSL for device %s (%s)",
+                    device.device_id,
+                    device.name,
+                )
+                tsl = await self.get_device_tsl(device.device_id)
+                device.tsl = tsl
+
+        return self._discovered_devices.copy()
 
     async def invoke_service(
         self,
@@ -323,10 +344,7 @@ class AzoulaGateway:
         device_id: str,
         properties: list[str],
     ) -> None:
-        """Request device properties via thing.service.property.get.
-
-        The device will respond with property.post event containing the values.
-        """
+        """Request device properties via thing.service.property.get."""
         request_payload: dict[str, Any] = {
             "id": str(uuid.uuid4()),
             "deviceID": device_id,
@@ -347,6 +365,53 @@ class AzoulaGateway:
             self.gateway_id,
         )
 
+    async def get_device_tsl(
+        self,
+        device_id: str,
+        language: str = TSL_LANGUAGE_ENGLISH,
+        timeout_seconds: float = DEFAULT_TSL_TIMEOUT,
+    ) -> DeviceTSL | None:
+        """Get device Thing Specification Language (物模型)."""
+        request_id = str(uuid.uuid4())
+        request_payload: dict[str, Any] = {
+            "id": request_id,
+            "version": "1.0",
+            "deviceID": device_id,
+            "language": language,
+            "method": METHOD_TSL_GET,
+        }
+
+        event = asyncio.Event()
+        self._tsl_pending_requests[request_id] = event
+        self._tsl_responses[request_id] = None
+
+        try:
+            self._mqtt_client.publish(
+                self._pub_topic,
+                json.dumps(request_payload),
+            )
+
+            _LOGGER.debug(
+                "Requested TSL for device %s (language: %s) on gateway %s",
+                device_id,
+                language,
+                self.gateway_id,
+            )
+
+            await asyncio.wait_for(event.wait(), timeout=timeout_seconds)
+            return self._tsl_responses.get(request_id)
+
+        except TimeoutError:
+            _LOGGER.warning(
+                "TSL request timeout for device %s on gateway %s",
+                device_id,
+                self.gateway_id,
+            )
+            return None
+        finally:
+            self._tsl_pending_requests.pop(request_id, None)
+            self._tsl_responses.pop(request_id, None)
+
     def _handle_device_discover_response(self, payload: dict[str, Any]) -> None:
         """Handle device discovery response with pagination support."""
         if payload.get("code") != 200:
@@ -363,14 +428,12 @@ class AzoulaGateway:
         data = payload.get("data", {})
         device_list = data.get("deviceList", [])
 
-        lights = self._devices_result[DeviceType.LIGHT]
         for device_data in device_list:
-            if not Light.is_light_device(device_data):
-                continue
-
-            light = Light.from_dict(device_data)
-            if not any(d.unique_id == light.unique_id for d in lights):
-                lights.append(light)
+            device = AzoulaDevice.from_dict(device_data)
+            if not any(
+                d.unique_id == device.unique_id for d in self._discovered_devices
+            ):
+                self._discovered_devices.append(device)
 
         self._current_page = current_page
 
@@ -393,7 +456,6 @@ class AzoulaGateway:
             params,
         )
 
-        # Notify listeners about property update
         self._notify_listeners(
             CallbackEventType.PROPERTY_UPDATE,
             device_id,
@@ -447,3 +509,47 @@ class AzoulaGateway:
                 code,
                 request_id,
             )
+
+    def _handle_tsl_reply(self, payload: dict[str, Any]) -> None:
+        """Handle TSL get reply (thing.tsl.reply)."""
+        code = payload.get("code", 0)
+        request_id = payload.get("id")
+        message = payload.get("message", "")
+
+        if not request_id or request_id not in self._tsl_pending_requests:
+            _LOGGER.debug(
+                "Received TSL reply for unknown request %s on gateway %s",
+                request_id,
+                self.gateway_id,
+            )
+            return
+
+        if code != 200:
+            _LOGGER.warning(
+                "TSL request failed on gateway %s: code=%s, message=%s, id=%s",
+                self.gateway_id,
+                code,
+                message,
+                request_id,
+            )
+            self._tsl_responses[request_id] = None
+            self._tsl_pending_requests[request_id].set()
+            return
+
+        tsl_data = payload.get("tsl")
+        if tsl_data:
+            _LOGGER.debug(
+                "Received TSL data on gateway %s: profile=%s, deviceType=%s",
+                self.gateway_id,
+                tsl_data.get("profile"),
+                tsl_data.get("deviceType"),
+            )
+            self._tsl_responses[request_id] = tsl_data
+        else:
+            _LOGGER.warning(
+                "TSL reply missing 'tsl' field on gateway %s",
+                self.gateway_id,
+            )
+            self._tsl_responses[request_id] = None
+
+        self._tsl_pending_requests[request_id].set()
