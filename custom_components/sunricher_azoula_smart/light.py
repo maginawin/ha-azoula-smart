@@ -41,15 +41,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Azoula Smart lights from a config entry."""
-    entities: list[AzoulaLight] = []
-
-    for device in entry.runtime_data.devices:
-        # Check if device has light capabilities
-        if device.has_property("OnOff"):
-            entities.append(AzoulaLight(device, entry.runtime_data.gateway))
-
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(
+        [
+            AzoulaLight(device, entry.runtime_data.gateway)
+            for device in entry.runtime_data.devices
+            if device.has_property("OnOff")
+        ]
+    )
 
 
 class AzoulaLight(LightEntity):

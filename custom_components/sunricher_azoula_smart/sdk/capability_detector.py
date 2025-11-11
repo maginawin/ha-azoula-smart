@@ -13,16 +13,7 @@ class CapabilityDetector:
 
     @staticmethod
     def get_required_platforms(device: AzoulaDevice) -> set[str]:
-        """Get Home Assistant platforms required for device capabilities.
-
-        Analyzes device TSL properties and returns which platforms are needed.
-
-        Args:
-            device: Azoula device with TSL loaded
-
-        Returns:
-            Set of platform names (e.g., {"light", "sensor", "binary_sensor"})
-        """
+        """Get required Home Assistant platforms based on device TSL properties."""
         if not device.tsl:
             return set()
 

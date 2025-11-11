@@ -27,19 +27,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Azoula Smart binary sensors from a config entry."""
-    entities: list[AzoulaOccupancySensor] = []
-
-    for device in entry.runtime_data.devices:
-        # Check which binary sensor capabilities this device has
-        if device.has_property("OccupancyState"):
-            entities.append(AzoulaOccupancySensor(device, entry.runtime_data.gateway))
-
-        # Future binary sensor types can be added here
-        # if device.has_property("MotionSensorIntrusionIndication"):
-        #     entities.append(AzoulaMotionSensor(device, gateway))
-
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(
+        [
+            AzoulaOccupancySensor(device, entry.runtime_data.gateway)
+            for device in entry.runtime_data.devices
+            if device.has_property("OccupancyState")
+        ]
+    )
 
 
 class AzoulaOccupancySensor(BinarySensorEntity):

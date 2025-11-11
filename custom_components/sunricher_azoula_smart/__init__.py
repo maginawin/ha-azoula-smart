@@ -83,7 +83,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         serial_number=gateway.gateway_id,
     )
 
-    # Discover devices with TSL loading
     devices = await gateway.discover_devices(load_tsl=True)
     _remove_missing_devices(hass, entry, devices, (DOMAIN, gateway.gateway_id))
 
@@ -93,7 +92,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         gateway.gateway_id,
     )
 
-    # Determine which platforms are needed based on device capabilities
     required_platforms: set[str] = set()
     for device in devices:
         platforms = CapabilityDetector.get_required_platforms(device)
@@ -110,8 +108,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         devices=devices,
     )
 
-    # Only forward to platforms that are actually needed
-    # Map platform strings to Platform enum values
     platform_map = {
         "light": Platform.LIGHT,
         "sensor": Platform.SENSOR,
@@ -131,13 +127,11 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: AzoulaSmartConfigEntry
 ) -> bool:
     """Unload a config entry."""
-    # Determine which platforms were loaded
     required_platforms: set[str] = set()
     for device in entry.runtime_data.devices:
         platforms = CapabilityDetector.get_required_platforms(device)
         required_platforms.update(platforms)
 
-    # Map platform strings to Platform enum values
     platform_map = {
         "light": Platform.LIGHT,
         "sensor": Platform.SENSOR,

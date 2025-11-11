@@ -29,21 +29,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Azoula Smart sensors from a config entry."""
-    entities = []
-
-    for device in entry.runtime_data.devices:
-        # Check which sensor capabilities this device has
-        if device.has_property("IllumMeasuredValue"):
-            entities.append(AzoulaIlluminanceSensor(device, entry.runtime_data.gateway))
-
-        # Future sensor types can be added here
-        # if device.has_property("Temperature"):
-        #     entities.append(AzoulaTemperatureSensor(device, gateway))
-        # if device.has_property("Humidity"):
-        #     entities.append(AzoulaHumiditySensor(device, gateway))
-
-    if entities:
-        async_add_entities(entities)
+    async_add_entities(
+        [
+            AzoulaIlluminanceSensor(device, entry.runtime_data.gateway)
+            for device in entry.runtime_data.devices
+            if device.has_property("IllumMeasuredValue")
+        ]
+    )
 
 
 class AzoulaIlluminanceSensor(SensorEntity):
