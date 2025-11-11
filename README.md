@@ -8,10 +8,29 @@ Home Assistant custom integration for Azoula Smart Hub devices via local MQTT.
 ## Requirements
 
 - Home Assistant 2024.1.0+
-- Azoula Smart Hub/Gateway
-- MQTT integration enabled in Home Assistant
+- Azoula Smart Hub
 
-⚠️ **Note**: This integration is in early development. MQTT communication layer is complete, device platforms are work in progress.
+## Supported Devices
+
+This integration currently supports the following device types:
+
+### Light
+
+- On/Off control
+- Brightness adjustment
+- Color temperature (Kelvin)
+- RGB/HS/XY color control
+
+### Sensor
+
+- Illuminance sensor
+
+### Binary Sensor
+
+- Occupancy detection
+- Motion sensor
+
+Device support is automatically detected based on TSL (Thing Specification Language) capabilities reported by your Azoula gateway.
 
 ## Installation
 
