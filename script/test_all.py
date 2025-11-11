@@ -29,15 +29,9 @@ from custom_components.sunricher_azoula.sdk.const import (  # noqa: E402
     SERVICE_ONOFF_ON,
     CallbackEventType,
 )
-from custom_components.sunricher_azoula.sdk.device import (  # noqa: E402
-    AzoulaDevice,
-)
-from custom_components.sunricher_azoula.sdk.gateway import (  # noqa: E402
-    AzoulaGateway,
-)
-from custom_components.sunricher_azoula.sdk.types import (  # noqa: E402
-    PropertyParams,
-)
+from custom_components.sunricher_azoula.sdk.device import AzoulaDevice  # noqa: E402
+from custom_components.sunricher_azoula.sdk.gateway import AzoulaGateway  # noqa: E402
+from custom_components.sunricher_azoula.sdk.types import PropertyParams  # noqa: E402
 
 logging.basicConfig(
     level=logging.DEBUG,
