@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
+from custom_components.sunricher_azoula.sdk.const import (  # noqa: E402
     SERVICE_COLOR_MOVE_TO_COLOR,
     SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
     SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
@@ -29,13 +29,13 @@ from custom_components.sunricher_azoula_smart.sdk.const import (  # noqa: E402
     SERVICE_ONOFF_ON,
     CallbackEventType,
 )
-from custom_components.sunricher_azoula_smart.sdk.device import (  # noqa: E402
+from custom_components.sunricher_azoula.sdk.device import (  # noqa: E402
     AzoulaDevice,
 )
-from custom_components.sunricher_azoula_smart.sdk.gateway import (  # noqa: E402
+from custom_components.sunricher_azoula.sdk.gateway import (  # noqa: E402
     AzoulaGateway,
 )
-from custom_components.sunricher_azoula_smart.sdk.types import (  # noqa: E402
+from custom_components.sunricher_azoula.sdk.types import (  # noqa: E402
     PropertyParams,
 )
 

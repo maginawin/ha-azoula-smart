@@ -26,7 +26,7 @@ Home Assistant custom integration for Azoula Smart Hub devices via local MQTT.
 ### Manual
 
 1. Download [latest release](https://github.com/maginawin/ha-azoula-smart/releases)
-2. Copy `custom_components/sunricher_azoula_smart` to your `custom_components` directory
+2. Copy `custom_components/sunricher_azoula` to your `custom_components` directory
 3. Restart Home Assistant
 
 ## Configuration
@@ -44,7 +44,7 @@ Home Assistant custom integration for Azoula Smart Hub devices via local MQTT.
 ```yaml
 logger:
   logs:
-    custom_components.sunricher_azoula_smart: debug
+    custom_components.sunricher_azoula: debug
 ```
 
 ## Support

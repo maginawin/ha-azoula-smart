@@ -18,7 +18,7 @@ fi
 script_path=$(dirname "$0")
 
 # Set source and target
-component_name=sunricher_azoula_smart
+component_name=sunricher_azoula
 source_path="$script_path/custom_components/$component_name"
 target_root="$config_path/custom_components"
 target_path="$target_root/$component_name"
