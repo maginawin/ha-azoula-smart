@@ -271,14 +271,7 @@ class AzoulaGateway:
         self,
         load_tsl: bool = True,
     ) -> list[AzoulaDevice]:
-        """Discover all sub-devices under the gateway.
-
-        Args:
-            load_tsl: If True, automatically load TSL for each discovered device
-
-        Returns:
-            List of discovered AzoulaDevice instances
-        """
+        """Discover all sub-devices under the gateway."""
         self._devices_received = asyncio.Event()
         self._discovered_devices = []
         self._expected_page_count = 0
@@ -306,7 +299,6 @@ class AzoulaGateway:
                 self.gateway_id,
             )
 
-        # Load TSL for each discovered device if requested
         if load_tsl:
             for device in self._discovered_devices:
                 _LOGGER.debug(
@@ -352,10 +344,7 @@ class AzoulaGateway:
         device_id: str,
         properties: list[str],
     ) -> None:
-        """Request device properties via thing.service.property.get.
-
-        The device will respond with property.post event containing the values.
-        """
+        """Request device properties via thing.service.property.get."""
         request_payload: dict[str, Any] = {
             "id": str(uuid.uuid4()),
             "deviceID": device_id,
@@ -380,18 +369,9 @@ class AzoulaGateway:
         self,
         device_id: str,
         language: str = TSL_LANGUAGE_ENGLISH,
-        timeout: float = DEFAULT_TSL_TIMEOUT,
+        timeout_seconds: float = DEFAULT_TSL_TIMEOUT,
     ) -> DeviceTSL | None:
-        """Get device Thing Specification Language (物模型) for a device.
-
-        Args:
-            device_id: Device ID to get TSL for
-            language: TSL language (english or chinese), defaults to english
-            timeout: Request timeout in seconds
-
-        Returns:
-            DeviceTSL object if successful, None if request fails or times out
-        """
+        """Get device Thing Specification Language (物模型)."""
         request_id = str(uuid.uuid4())
         request_payload: dict[str, Any] = {
             "id": request_id,
@@ -401,7 +381,6 @@ class AzoulaGateway:
             "method": METHOD_TSL_GET,
         }
 
-        # Create event for this request
         event = asyncio.Event()
         self._tsl_pending_requests[request_id] = event
         self._tsl_responses[request_id] = None
@@ -419,7 +398,7 @@ class AzoulaGateway:
                 self.gateway_id,
             )
 
-            await asyncio.wait_for(event.wait(), timeout=timeout)
+            await asyncio.wait_for(event.wait(), timeout=timeout_seconds)
             return self._tsl_responses.get(request_id)
 
         except TimeoutError:
@@ -430,7 +409,6 @@ class AzoulaGateway:
             )
             return None
         finally:
-            # Cleanup
             self._tsl_pending_requests.pop(request_id, None)
             self._tsl_responses.pop(request_id, None)
 
@@ -452,7 +430,6 @@ class AzoulaGateway:
 
         for device_data in device_list:
             device = AzoulaDevice.from_dict(device_data)
-            # Avoid duplicates
             if not any(
                 d.unique_id == device.unique_id for d in self._discovered_devices
             ):
@@ -479,7 +456,6 @@ class AzoulaGateway:
             params,
         )
 
-        # Notify listeners about property update
         self._notify_listeners(
             CallbackEventType.PROPERTY_UPDATE,
             device_id,

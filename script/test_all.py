@@ -100,24 +100,32 @@ class GatewayTester:
             self._last_property_params = params
             self._property_update_event.set()
 
+    def _write_json_file(self, file_path: Path, data: dict) -> None:
+        """Write JSON data to file (blocking operation for use with to_thread)."""
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
     async def _wait_for_online_status(
-        self, expected_status: bool, timeout: float = 5.0
+        self, expected_status: bool, timeout_seconds: float = 5.0
     ) -> bool:
         """Wait for online status change with timeout."""
         self._pending_online_status = expected_status
         self._online_status_event.clear()
 
         try:
-            await asyncio.wait_for(self._online_status_event.wait(), timeout=timeout)
-            return True
+            await asyncio.wait_for(
+                self._online_status_event.wait(), timeout=timeout_seconds
+            )
         except TimeoutError:
             _LOGGER.warning("Timeout waiting for online status %s", expected_status)
             return False
+        else:
+            return True
         finally:
             self._pending_online_status = None
 
     async def _wait_for_property_update(
-        self, device_id: str, timeout: float = 5.0
+        self, device_id: str, timeout_seconds: float = 5.0
     ) -> PropertyParams | None:
         """Wait for property update for specific device with timeout."""
         self._pending_property_device_id = device_id
@@ -125,13 +133,16 @@ class GatewayTester:
         self._last_property_params = None
 
         try:
-            await asyncio.wait_for(self._property_update_event.wait(), timeout=timeout)
-            return self._last_property_params
+            await asyncio.wait_for(
+                self._property_update_event.wait(), timeout=timeout_seconds
+            )
         except TimeoutError:
             _LOGGER.warning(
                 "Timeout waiting for property update for device %s", device_id
             )
             return None
+        else:
+            return self._last_property_params
         finally:
             self._pending_property_device_id = None
 
@@ -163,12 +174,12 @@ class GatewayTester:
                 "Connecting to gateway %s at %s...", self.gateway_id, self.host
             )
             await self.gateway.connect()
-            _LOGGER.info("✓ Connection test PASSED")
-            return True
-
         except Exception:
             _LOGGER.exception("✗ Connection test FAILED")
             return False
+        else:
+            _LOGGER.info("✓ Connection test PASSED")
+            return True
 
     async def test_disconnection(self) -> bool:
         """Test disconnecting from the gateway."""
@@ -183,12 +194,12 @@ class GatewayTester:
         try:
             _LOGGER.info("Disconnecting from gateway %s...", self.gateway_id)
             await self.gateway.disconnect()
-            _LOGGER.info("✓ Disconnection test PASSED")
-            return True
-
         except Exception:
             _LOGGER.exception("✗ Disconnection test FAILED")
             return False
+        else:
+            _LOGGER.info("✓ Disconnection test PASSED")
+            return True
 
     async def test_reconnection(self) -> bool:
         """Test reconnecting to the gateway."""
@@ -203,12 +214,12 @@ class GatewayTester:
         try:
             _LOGGER.info("Reconnecting to gateway %s...", self.gateway_id)
             await self.gateway.connect()
-            _LOGGER.info("✓ Reconnection test PASSED")
-            return True
-
         except Exception:
             _LOGGER.exception("✗ Reconnection test FAILED")
             return False
+        else:
+            _LOGGER.info("✓ Reconnection test PASSED")
+            return True
 
     async def test_device_discovery(self) -> bool:
         """Test device discovery."""
@@ -319,7 +330,9 @@ class GatewayTester:
                 self.test_light.device_id,
                 SERVICE_ONOFF_ON,
             )
-            await self._wait_for_property_update(self.test_light.device_id, timeout=3.0)
+            await self._wait_for_property_update(
+                self.test_light.device_id, timeout_seconds=3.0
+            )
 
             # Test turning off
             _LOGGER.info("Turning light OFF...")
@@ -327,7 +340,9 @@ class GatewayTester:
                 self.test_light.device_id,
                 SERVICE_ONOFF_OFF,
             )
-            await self._wait_for_property_update(self.test_light.device_id, timeout=3.0)
+            await self._wait_for_property_update(
+                self.test_light.device_id, timeout_seconds=3.0
+            )
 
             # Check if we received property updates
             new_events = len(self.property_update_events) - initial_events_count
@@ -379,7 +394,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_light.device_id, timeout=3.0
+                self.test_light.device_id, timeout_seconds=3.0
             )
 
             if params:
@@ -439,7 +454,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_light.device_id, timeout=3.0
+                self.test_light.device_id, timeout_seconds=3.0
             )
 
             if params:
@@ -507,7 +522,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_light.device_id, timeout=3.0
+                self.test_light.device_id, timeout_seconds=3.0
             )
 
             if params:
@@ -587,7 +602,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_light.device_id, timeout=3.0
+                self.test_light.device_id, timeout_seconds=3.0
             )
 
             if params:
@@ -661,7 +676,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_illuminance_sensor.device_id, timeout=3.0
+                self.test_illuminance_sensor.device_id, timeout_seconds=3.0
             )
 
             if params:
@@ -741,8 +756,7 @@ class GatewayTester:
 
                     # Save TSL to JSON file
                     tsl_file = doc_dir / f"light_{self.test_light.product_id}.json"
-                    with open(tsl_file, "w", encoding="utf-8") as f:
-                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
                     _LOGGER.info("  - Saved to: %s", tsl_file.name)
                 else:
                     _LOGGER.warning(
@@ -778,8 +792,7 @@ class GatewayTester:
                         doc_dir
                         / f"occupancy_sensor_{self.test_occupancy_sensor.product_id}.json"
                     )
-                    with open(tsl_file, "w", encoding="utf-8") as f:
-                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
                     _LOGGER.info("  - Saved to: %s", tsl_file.name)
                 else:
                     _LOGGER.warning(
@@ -816,8 +829,7 @@ class GatewayTester:
                         doc_dir
                         / f"illuminance_sensor_{self.test_illuminance_sensor.product_id}.json"
                     )
-                    with open(tsl_file, "w", encoding="utf-8") as f:
-                        json.dump(tsl, f, indent=2, ensure_ascii=False)
+                    await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
                     _LOGGER.info("  - Saved to: %s", tsl_file.name)
                 else:
                     _LOGGER.warning(
@@ -878,7 +890,7 @@ class GatewayTester:
 
             # Wait for property update using event
             params = await self._wait_for_property_update(
-                self.test_occupancy_sensor.device_id, timeout=3.0
+                self.test_occupancy_sensor.device_id, timeout_seconds=3.0
             )
 
             if params:
