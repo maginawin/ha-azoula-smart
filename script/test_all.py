@@ -14,6 +14,7 @@ import logging
 import os
 from pathlib import Path
 import sys
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -39,6 +40,9 @@ logging.basicConfig(
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Disable paho.mqtt.client debug logging
+logging.getLogger("paho.mqtt.client").setLevel(logging.WARNING)
 
 
 class GatewayTester:
@@ -94,7 +98,7 @@ class GatewayTester:
             self._last_property_params = params
             self._property_update_event.set()
 
-    def _write_json_file(self, file_path: Path, data: dict) -> None:
+    def _write_json_file(self, file_path: Path, data: dict[str, Any]) -> None:
         """Write JSON data to file (blocking operation for use with to_thread)."""
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -700,7 +704,7 @@ class GatewayTester:
             return True
 
     async def test_device_tsl(self) -> bool:
-        """Test device TSL (Thing Specification Language) retrieval."""
+        """Test device TSL (Thing Specification Language) retrieval for all devices."""
         _LOGGER.info("=" * 60)
         _LOGGER.info("Test 11: Device TSL Retrieval Test")
         _LOGGER.info("=" * 60)
@@ -715,21 +719,31 @@ class GatewayTester:
         _LOGGER.info("TSL files will be saved to: %s", doc_dir)
         _LOGGER.info("")
 
-        try:
-            # Test TSL for light if available
-            if self.test_light:
-                _LOGGER.info(
-                    "Getting TSL for light: %s (%s)",
-                    self.test_light.device_id,
-                    self.test_light.product_id,
-                )
+        if not self.discovered_devices:
+            _LOGGER.warning("No devices found to test TSL retrieval")
+            return True
 
-                tsl = await self.gateway.get_device_tsl(self.test_light.device_id)
+        try:
+            _LOGGER.info("Getting TSL for all %d discovered devices...", len(self.discovered_devices))
+            _LOGGER.info("")
+
+            success_count = 0
+
+            for device in self.discovered_devices:
+                device_name = device.name if device.name else "(unnamed)"
+                product_display = device.product_id if device.product_id else "(no product_id)"
+                _LOGGER.info(
+                    "Getting TSL for device: %s",
+                    device.device_id,
+                )
+                _LOGGER.info("  - Name: %s", device_name)
+                _LOGGER.info("  - Product: %s", product_display)
+                _LOGGER.info("  - Protocol: %s", device.protocol)
+
+                tsl = await self.gateway.get_device_tsl(device.device_id)
 
                 if tsl:
-                    _LOGGER.info(
-                        "✓ TSL received for light %s:", self.test_light.device_id
-                    )
+                    _LOGGER.info("✓ TSL received:")
                     _LOGGER.info("  - Profile: %s", tsl.get("profile"))
                     _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
                     _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
@@ -739,8 +753,8 @@ class GatewayTester:
                     # Log some property details
                     properties = tsl.get("properties", [])
                     if properties:
-                        _LOGGER.info("  - Sample properties:")
-                        for prop in properties[:5]:  # Show first 5 properties
+                        _LOGGER.info("  - Properties:")
+                        for prop in properties:
                             _LOGGER.info(
                                 "    * %s (%s): %s",
                                 prop.get("identifier"),
@@ -748,97 +762,24 @@ class GatewayTester:
                                 prop.get("accessMode"),
                             )
 
-                    # Save TSL to JSON file
-                    tsl_file = doc_dir / f"light_{self.test_light.product_id}.json"
+                    # Save TSL to JSON file using device_id as filename
+                    # This ensures each device gets its own file
+                    safe_filename = device.device_id.replace("/", "_").replace("\\", "_").replace(":", "_")
+                    tsl_file = doc_dir / f"{safe_filename}.json"
                     await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
                     _LOGGER.info("  - Saved to: %s", tsl_file.name)
+
+                    success_count += 1
                 else:
-                    _LOGGER.warning(
-                        "No TSL received for light %s", self.test_light.device_id
-                    )
+                    _LOGGER.warning("No TSL received for device %s", device.device_id)
+
                 _LOGGER.info("")
 
-            # Test TSL for occupancy sensor if available
-            if self.test_occupancy_sensor:
-                _LOGGER.info(
-                    "Getting TSL for occupancy sensor: %s (%s)",
-                    self.test_occupancy_sensor.device_id,
-                    self.test_occupancy_sensor.product_id,
-                )
-
-                tsl = await self.gateway.get_device_tsl(
-                    self.test_occupancy_sensor.device_id
-                )
-
-                if tsl:
-                    _LOGGER.info(
-                        "✓ TSL received for occupancy sensor %s:",
-                        self.test_occupancy_sensor.device_id,
-                    )
-                    _LOGGER.info("  - Profile: %s", tsl.get("profile"))
-                    _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
-                    _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
-                    _LOGGER.info("  - Services: %d", len(tsl.get("services", [])))
-                    _LOGGER.info("  - Events: %d", len(tsl.get("events", [])))
-
-                    # Save TSL to JSON file
-                    tsl_file = (
-                        doc_dir
-                        / f"occupancy_sensor_{self.test_occupancy_sensor.product_id}.json"
-                    )
-                    await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
-                    _LOGGER.info("  - Saved to: %s", tsl_file.name)
-                else:
-                    _LOGGER.warning(
-                        "No TSL received for occupancy sensor %s",
-                        self.test_occupancy_sensor.device_id,
-                    )
-                _LOGGER.info("")
-
-            # Test TSL for illuminance sensor if available
-            if self.test_illuminance_sensor:
-                _LOGGER.info(
-                    "Getting TSL for illuminance sensor: %s (%s)",
-                    self.test_illuminance_sensor.device_id,
-                    self.test_illuminance_sensor.product_id,
-                )
-
-                tsl = await self.gateway.get_device_tsl(
-                    self.test_illuminance_sensor.device_id
-                )
-
-                if tsl:
-                    _LOGGER.info(
-                        "✓ TSL received for illuminance sensor %s:",
-                        self.test_illuminance_sensor.device_id,
-                    )
-                    _LOGGER.info("  - Profile: %s", tsl.get("profile"))
-                    _LOGGER.info("  - DeviceType: %s", tsl.get("deviceType"))
-                    _LOGGER.info("  - Properties: %d", len(tsl.get("properties", [])))
-                    _LOGGER.info("  - Services: %d", len(tsl.get("services", [])))
-                    _LOGGER.info("  - Events: %d", len(tsl.get("events", [])))
-
-                    # Save TSL to JSON file
-                    tsl_file = (
-                        doc_dir
-                        / f"illuminance_sensor_{self.test_illuminance_sensor.product_id}.json"
-                    )
-                    await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
-                    _LOGGER.info("  - Saved to: %s", tsl_file.name)
-                else:
-                    _LOGGER.warning(
-                        "No TSL received for illuminance sensor %s",
-                        self.test_illuminance_sensor.device_id,
-                    )
-                _LOGGER.info("")
-
-            if (
-                not self.test_light
-                and not self.test_occupancy_sensor
-                and not self.test_illuminance_sensor
-            ):
-                _LOGGER.warning("No devices found to test TSL retrieval")
-                return True
+            _LOGGER.info(
+                "TSL retrieval complete: %d/%d devices processed",
+                success_count,
+                len(self.discovered_devices),
+            )
 
         except Exception:
             _LOGGER.exception("✗ Device TSL test FAILED")

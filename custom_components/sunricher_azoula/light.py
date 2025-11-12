@@ -165,8 +165,6 @@ class AzoulaLight(LightEntity):
             xy_color,
         )
 
-        service_invoked = False
-
         if color_temp_kelvin is not None:
             color_temp = int(color_temp_kelvin)
             min_temp = self._attr_min_color_temp_kelvin
@@ -186,7 +184,6 @@ class AzoulaLight(LightEntity):
                 SERVICE_COLOR_TEMP_MOVE_TO_COLOR_TEMP,
                 params,
             )
-            service_invoked = True
 
         if hs_color is not None:
             hue, saturation = hs_color
@@ -202,7 +199,6 @@ class AzoulaLight(LightEntity):
                 SERVICE_COLOR_MOVE_TO_HUE_AND_SATURATION,
                 params,
             )
-            service_invoked = True
 
         if xy_color is not None:
             color_x, color_y = xy_color
@@ -218,7 +214,6 @@ class AzoulaLight(LightEntity):
                 SERVICE_COLOR_MOVE_TO_COLOR,
                 params,
             )
-            service_invoked = True
 
         if brightness is not None:
             level = max(0, min(254, int(brightness)))
@@ -232,13 +227,12 @@ class AzoulaLight(LightEntity):
                 SERVICE_LEVEL_MOVE_TO_LEVEL_WITH_ONOFF,
                 params,
             )
-            service_invoked = True
 
-        if not service_invoked:
-            await self._gateway.invoke_service(
-                self._device.device_id,
-                SERVICE_ONOFF_ON,
-            )
+        # No parameters provided, just turn on
+        await self._gateway.invoke_service(
+            self._device.device_id,
+            SERVICE_ONOFF_ON,
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
