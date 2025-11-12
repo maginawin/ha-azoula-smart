@@ -98,7 +98,7 @@ class GatewayTester:
             self._last_property_params = params
             self._property_update_event.set()
 
-    def _write_json_file(self, file_path: Path, data: dict[str, Any]) -> None:
+    def _write_json_file(self, file_path: Path, data: Any) -> None:
         """Write JSON data to file (blocking operation for use with to_thread)."""
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -854,6 +854,60 @@ class GatewayTester:
             _LOGGER.info("✓ Occupancy sensor monitoring test PASSED")
             return True
 
+    async def test_device_identify(self) -> bool:
+        """Test device identify functionality."""
+        _LOGGER.info("=" * 60)
+        _LOGGER.info("Test 13: Device Identify Test")
+        _LOGGER.info("=" * 60)
+
+        if not self.gateway:
+            _LOGGER.error("✗ Device identify test FAILED: No gateway instance")
+            return False
+
+        try:
+            # Test identify on all discovered devices that support it
+            devices_with_identify = [
+                d for d in self.discovered_devices if d.has_identify_support()
+            ]
+
+            if not devices_with_identify:
+                _LOGGER.warning(
+                    "No devices with identify support found, skipping identify test"
+                )
+                return True
+
+            _LOGGER.info(
+                "Found %d device(s) with identify support", len(devices_with_identify)
+            )
+
+            for device in devices_with_identify:
+                _LOGGER.info(
+                    "Testing identify for device: %s (%s)",
+                    device.device_id,
+                    device.product_id,
+                )
+                _LOGGER.info("  - Name: %s", device.name)
+                _LOGGER.info("  - Protocol: %s", device.protocol)
+
+                # Trigger identify
+                await self.gateway.identify_device(device.device_id)
+
+                _LOGGER.info(
+                    "✓ Identify command sent to device %s (device should flash/blink)",
+                    device.device_id,
+                )
+                _LOGGER.info("")
+
+                # Small delay between devices
+                await asyncio.sleep(1)
+
+        except Exception:
+            _LOGGER.exception("✗ Device identify test FAILED")
+            return False
+        else:
+            _LOGGER.info("✓ Device identify test PASSED")
+            return True
+
     async def run_all_tests(self) -> None:
         """Run all connection tests."""
         _LOGGER.info("Starting Azoula Gateway Connection Tests")
@@ -915,6 +969,10 @@ class GatewayTester:
             # Test 12: Occupancy Sensor Monitoring
             result = await self.test_occupancy_sensor_monitoring()
             results.append(("Occupancy Sensor Monitoring", result))
+
+            # Test 13: Device Identify
+            result = await self.test_device_identify()
+            results.append(("Device Identify", result))
 
         finally:
             # Cleanup

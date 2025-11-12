@@ -328,3 +328,14 @@ class AzoulaLight(LightEntity):
 
         self._attr_available = available
         self.schedule_update_ha_state()
+
+    async def async_identify(self) -> None:
+        """Identify the light device (flash/blink to help locate it)."""
+        if self._device.has_identify_support():
+            await self._gateway.identify_device(self._device.device_id)
+            _LOGGER.info("Identified light device %s", self._device.device_id)
+        else:
+            _LOGGER.warning(
+                "Device %s does not support identify service",
+                self._device.device_id,
+            )

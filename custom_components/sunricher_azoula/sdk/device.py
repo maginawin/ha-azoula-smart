@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .const import SERVICE_DEVICE_IDENTIFY
+
 if TYPE_CHECKING:
-    from .types import DeviceTSL, TSLProperty
+    from .types import DeviceTSL, TSLProperty, TSLService
 
 
 @dataclass
@@ -73,3 +75,16 @@ class AzoulaDevice:
     def get_property_value(self, identifier: str, default: Any = None) -> Any:
         """Get current property value."""
         return self.properties.get(identifier, default)
+
+    def has_service(self, identifier: str) -> bool:
+        """Check if device supports a service based on TSL."""
+        if not self.tsl:
+            return False
+
+
+        services: list[TSLService] = self.tsl.get("services", [])
+        return any(svc.get("identifier") == identifier for svc in services)
+
+    def has_identify_support(self) -> bool:
+        """Check if device supports identify service."""
+        return self.has_service(SERVICE_DEVICE_IDENTIFY)

@@ -32,6 +32,7 @@ from .const import (
     METHOD_SERVICE_INVOKE_REPLY,
     METHOD_TSL_GET,
     METHOD_TSL_GET_REPLY,
+    SERVICE_DEVICE_IDENTIFY,
     SERVICE_PROPERTY_GET,
     TOPIC_GATEWAY_PREFIX,
     TOPIC_PLATFORM_APP_PREFIX,
@@ -336,6 +337,20 @@ class AzoulaGateway:
             service_identifier,
             device_id,
             params,
+            self.gateway_id,
+        )
+
+    async def identify_device(self, device_id: str) -> None:
+        """Trigger device identification (flashing/beeping).
+
+        Sends DeviceIdentify service call to make the device identifiable
+        by flashing lights, beeping, or other indication method.
+        """
+        await self.invoke_service(device_id, SERVICE_DEVICE_IDENTIFY)
+
+        _LOGGER.info(
+            "Triggered identify for device %s on gateway %s",
+            device_id,
             self.gateway_id,
         )
 
