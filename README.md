@@ -10,6 +10,17 @@ Home Assistant custom integration for Azoula Smart Hub devices via local MQTT.
 - Home Assistant 2024.1.0+
 - Azoula Smart Hub
 
+## Supported Gateways
+
+This integration has been tested with the following Azoula Smart Hub gateways:
+
+- [Azoula Smart Hub (AZ220614A)](https://www.sunricher.com/azoula-smart-hub-easy-home-zigbee-gateway.html) - Zigbee 3.0 Gateway
+  - Supports up to 150 Zigbee devices
+  - 2.4GHz operating frequency
+  - Ethernet connectivity
+
+Other Azoula/Meribee ecosystem gateways may also work but have not been officially tested.
+
 ## Supported Devices
 
 This integration currently supports the following device types:
