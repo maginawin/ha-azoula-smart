@@ -724,14 +724,19 @@ class GatewayTester:
             return True
 
         try:
-            _LOGGER.info("Getting TSL for all %d discovered devices...", len(self.discovered_devices))
+            _LOGGER.info(
+                "Getting TSL for all %d discovered devices...",
+                len(self.discovered_devices),
+            )
             _LOGGER.info("")
 
             success_count = 0
 
             for device in self.discovered_devices:
                 device_name = device.name if device.name else "(unnamed)"
-                product_display = device.product_id if device.product_id else "(no product_id)"
+                product_display = (
+                    device.product_id if device.product_id else "(no product_id)"
+                )
                 _LOGGER.info(
                     "Getting TSL for device: %s",
                     device.device_id,
@@ -764,7 +769,11 @@ class GatewayTester:
 
                     # Save TSL to JSON file using device_id as filename
                     # This ensures each device gets its own file
-                    safe_filename = device.device_id.replace("/", "_").replace("\\", "_").replace(":", "_")
+                    safe_filename = (
+                        device.device_id.replace("/", "_")
+                        .replace("\\", "_")
+                        .replace(":", "_")
+                    )
                     tsl_file = doc_dir / f"{safe_filename}.json"
                     await asyncio.to_thread(self._write_json_file, tsl_file, tsl)
                     _LOGGER.info("  - Saved to: %s", tsl_file.name)

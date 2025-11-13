@@ -81,7 +81,6 @@ class AzoulaDevice:
         if not self.tsl:
             return False
 
-
         services: list[TSLService] = self.tsl.get("services", [])
         return any(svc.get("identifier") == identifier for svc in services)
 
