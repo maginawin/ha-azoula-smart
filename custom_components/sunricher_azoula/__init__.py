@@ -112,10 +112,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         "light": Platform.LIGHT,
         "sensor": Platform.SENSOR,
         "binary_sensor": Platform.BINARY_SENSOR,
+        "button": Platform.BUTTON,
     }
     platforms_to_load = [
         platform_map[p] for p in required_platforms if p in platform_map
     ]
+
+    # Always load button platform for identify functionality
+    if Platform.BUTTON not in platforms_to_load:
+        platforms_to_load.append(Platform.BUTTON)
 
     if platforms_to_load:
         await hass.config_entries.async_forward_entry_setups(entry, platforms_to_load)
@@ -136,10 +141,15 @@ async def async_unload_entry(
         "light": Platform.LIGHT,
         "sensor": Platform.SENSOR,
         "binary_sensor": Platform.BINARY_SENSOR,
+        "button": Platform.BUTTON,
     }
     platforms_to_unload = [
         platform_map[p] for p in required_platforms if p in platform_map
     ]
+
+    # Always unload button platform
+    if Platform.BUTTON not in platforms_to_unload:
+        platforms_to_unload.append(Platform.BUTTON)
 
     await entry.runtime_data.gateway.disconnect()
 

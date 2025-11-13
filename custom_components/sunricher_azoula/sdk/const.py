@@ -29,6 +29,9 @@ METHOD_TSL_GET_REPLY = "thing.tsl.reply"
 # Property service identifiers
 SERVICE_PROPERTY_GET = "get"
 
+# Device service identifiers
+SERVICE_DEVICE_IDENTIFY = "DeviceIdentify"
+
 # Light service identifiers (Zigbee Cluster Services)
 SERVICE_ONOFF_ON = "OnOffClusterOn"
 SERVICE_ONOFF_OFF = "OnOffClusterOff"
