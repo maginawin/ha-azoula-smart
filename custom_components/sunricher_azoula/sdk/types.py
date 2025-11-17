@@ -17,6 +17,7 @@ class PropertyValue(TypedDict):
 class PropertyParams(TypedDict, total=False):
     """Property update parameters from thing.event.property.post."""
 
+    # Light properties
     OnOff: PropertyValue  # 0 = off, 1 = on
     CurrentLevel: PropertyValue  # Brightness level 0-254
     ColorTemperature: PropertyValue  # Color temperature in Kelvin
@@ -24,9 +25,32 @@ class PropertyParams(TypedDict, total=False):
     CurrentSaturation: PropertyValue  # Saturation level 0-100 percent
     CurrentX: PropertyValue  # CIE 1931 color space X coordinate
     CurrentY: PropertyValue  # CIE 1931 color space Y coordinate
+
+    # Light configuration properties
+    StartUpOnOff: (
+        PropertyValue  # Power-on behavior: 0=off, 1=on, 2=toggle, 255=previous
+    )
+    MinLevelSet: PropertyValue  # Minimum brightness level 0-255
+    LevelControlMinLevel: PropertyValue  # Minimum brightness level 1-254
+    LevelControlMaxLevel: PropertyValue  # Maximum brightness level 0-254
+    OnOffTransitionTime: PropertyValue  # On/off transition time in 0.1s units
+    OnTransitionTime: PropertyValue  # Turn-on transition time in 0.1s units
+    OffTransitionTime: PropertyValue  # Turn-off transition time in 0.1s units
+
+    # Sensor properties
     MotionSensorIntrusionIndication: PropertyValue  # 0 = normal, 1 = alarm
     OccupancyState: PropertyValue  # 0 = unoccupied, 1 = occupied
     IllumMeasuredValue: PropertyValue  # Illuminance value 0.0001-3576000 Lux
+
+    # Sensor configuration properties
+    IlluminanceThreshold: PropertyValue  # Illuminance threshold 0-65535 Lux
+    OccupancyDetectionArea: PropertyValue  # Detection area percentage 0-100
+    OccupancyLEDStatus: PropertyValue  # LED status 0=disabled, 1=enabled
+
+    # Energy monitoring properties
+    CurrentSummationDelivered: PropertyValue  # Total energy consumption in kWh
+    ActivePower_User: PropertyValue  # Active power in Watts
+    StandbyPower_User: PropertyValue  # Standby power in Watts
 
 
 ListenerCallback = Callable[[str, bool], None] | Callable[[str, PropertyParams], None]

@@ -113,6 +113,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: AzoulaSmartConfigEntry) 
         "sensor": Platform.SENSOR,
         "binary_sensor": Platform.BINARY_SENSOR,
         "button": Platform.BUTTON,
+        "number": Platform.NUMBER,
+        "select": Platform.SELECT,
+        "switch": Platform.SWITCH,
     }
     platforms_to_load = [
         platform_map[p] for p in required_platforms if p in platform_map
@@ -142,6 +145,9 @@ async def async_unload_entry(
         "sensor": Platform.SENSOR,
         "binary_sensor": Platform.BINARY_SENSOR,
         "button": Platform.BUTTON,
+        "number": Platform.NUMBER,
+        "select": Platform.SELECT,
+        "switch": Platform.SWITCH,
     }
     platforms_to_unload = [
         platform_map[p] for p in required_platforms if p in platform_map

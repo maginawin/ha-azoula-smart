@@ -36,14 +36,41 @@ class CapabilityDetector:
                 platforms.add("light")
 
             # Sensor properties
-            elif identifier in ("IllumMeasuredValue", "Temperature", "Humidity"):
+            if identifier in (
+                "IllumMeasuredValue",
+                "Temperature",
+                "Humidity",
+                "CurrentSummationDelivered",
+                "ActivePower_User",
+            ):
                 platforms.add("sensor")
 
             # Binary sensor properties
-            elif identifier in (
+            if identifier in (
                 "OccupancyState",
                 "MotionSensorIntrusionIndication",
             ):
                 platforms.add("binary_sensor")
+
+            # Number properties (configuration entities)
+            if identifier in (
+                "MinLevelSet",
+                "LevelControlMinLevel",
+                "LevelControlMaxLevel",
+                "OnOffTransitionTime",
+                "OnTransitionTime",
+                "OffTransitionTime",
+                "IlluminanceThreshold",
+                "OccupancyDetectionArea",
+            ):
+                platforms.add("number")
+
+            # Select properties
+            if identifier == "StartUpOnOff":
+                platforms.add("select")
+
+            # Switch properties
+            if identifier == "OccupancyLEDStatus":
+                platforms.add("switch")
 
         return platforms
