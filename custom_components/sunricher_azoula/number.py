@@ -18,9 +18,6 @@ from .types import AzoulaSmartConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
-# Service identifier for property setting
-SERVICE_PROPERTY_SET = "set"
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -111,9 +108,8 @@ class AzoulaNumberEntity(NumberEntity):
             self._device.device_id,
         )
 
-        await self._gateway.invoke_service(
+        await self._gateway.set_device_properties(
             self._device.device_id,
-            SERVICE_PROPERTY_SET,
             {self._property_identifier: int_value},
         )
 
@@ -131,17 +127,28 @@ class AzoulaNumberEntity(NumberEntity):
             )
         )
 
-        # Request initial property value
-        await self._gateway.get_device_properties(
-            self._device.device_id,
-            [self._property_identifier],
-        )
+        # Request initial property value only if property is readable
+        prop_spec = self._device.get_property_spec(self._property_identifier)
+        access_mode = prop_spec.get("accessMode", "r") if prop_spec else "r"
 
-        _LOGGER.debug(
-            "Requested initial property %s for device %s",
-            self._property_identifier,
-            self._device.device_id,
-        )
+        if access_mode in ("r", "rw"):
+            await self._gateway.get_device_properties(
+                self._device.device_id,
+                [self._property_identifier],
+            )
+
+            _LOGGER.debug(
+                "Requested initial property %s for device %s",
+                self._property_identifier,
+                self._device.device_id,
+            )
+        else:
+            _LOGGER.debug(
+                "Skipping initial property request for %s (accessMode=%s) on device %s",
+                self._property_identifier,
+                access_mode,
+                self._device.device_id,
+            )
 
     @callback
     def _handle_device_update(self, dev_id: str, status: PropertyParams) -> None:
@@ -269,9 +276,8 @@ class AzoulaTransitionTimeNumber(AzoulaNumberEntity):
             self._device.device_id,
         )
 
-        await self._gateway.invoke_service(
+        await self._gateway.set_device_properties(
             self._device.device_id,
-            SERVICE_PROPERTY_SET,
             {self._property_identifier: tenths_value},
         )
         # Update local state (store in seconds for display)

@@ -18,9 +18,6 @@ from .types import AzoulaSmartConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
-# Service identifier for property setting
-SERVICE_PROPERTY_SET = "set"
-
 # StartUpOnOff options mapping
 STARTUP_ONOFF_OPTIONS = {
     "off": 0,
@@ -88,9 +85,8 @@ class AzoulaStartUpOnOffSelect(SelectEntity):
             self._device.device_id,
         )
 
-        await self._gateway.invoke_service(
+        await self._gateway.set_device_properties(
             self._device.device_id,
-            SERVICE_PROPERTY_SET,
             {"StartUpOnOff": value},
         )
 

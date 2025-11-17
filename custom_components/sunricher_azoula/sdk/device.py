@@ -84,6 +84,30 @@ class AzoulaDevice:
         services: list[TSLService] = self.tsl.get("services", [])
         return any(svc.get("identifier") == identifier for svc in services)
 
+    def can_get_property(self, identifier: str) -> bool:
+        """Check if property can be retrieved via thing.service.property.get.
+
+        This checks both:
+        1. The property exists in the TSL
+        2. The property is listed in the 'get' service's inputData
+        """
+        if not self.tsl:
+            return False
+
+        # First check if property exists
+        if not self.has_property(identifier):
+            return False
+
+        # Check if property is in the get service's inputData
+        services: list[TSLService] = self.tsl.get("services", [])
+        for svc in services:
+            if svc.get("identifier") == "get":
+                input_data = svc.get("inputData", [])
+                return identifier in input_data
+
+        # If no get service found, assume property can't be retrieved
+        return False
+
     def has_identify_support(self) -> bool:
         """Check if device supports identify service."""
         return self.has_service(SERVICE_DEVICE_IDENTIFY)
