@@ -74,6 +74,7 @@ class GatewayTester:
         self._pending_online_status: bool | None = None
         self._online_status_event = asyncio.Event()
         self._pending_property_device_id: str | None = None
+        self._pending_property_names: set[str] | None = None
         self._property_update_event = asyncio.Event()
         self._last_property_params: PropertyParams | None = None
 
@@ -95,8 +96,15 @@ class GatewayTester:
 
         # Trigger event if waiting for this device's property update
         if self._pending_property_device_id == dev_id:
-            self._last_property_params = params
-            self._property_update_event.set()
+            # If specific properties are being waited for, only trigger if any match
+            if self._pending_property_names is not None:
+                if any(prop in params for prop in self._pending_property_names):
+                    self._last_property_params = params
+                    self._property_update_event.set()
+            else:
+                # No specific properties, trigger on any update
+                self._last_property_params = params
+                self._property_update_event.set()
 
     def _write_json_file(self, file_path: Path, data: Any) -> None:
         """Write JSON data to file (blocking operation for use with to_thread)."""
@@ -123,10 +131,26 @@ class GatewayTester:
             self._pending_online_status = None
 
     async def _wait_for_property_update(
-        self, device_id: str, timeout_seconds: float = 5.0
+        self,
+        device_id: str,
+        timeout_seconds: float = 5.0,
+        property_names: list[str] | None = None,
     ) -> PropertyParams | None:
-        """Wait for property update for specific device with timeout."""
+        """Wait for property update for specific device with timeout.
+
+        Args:
+            device_id: Device ID to wait for
+            timeout_seconds: Timeout in seconds
+            property_names: Optional list of specific property names to wait for.
+                          If provided, only updates containing at least one of these
+                          properties will trigger the event. If None, any property
+                          update will trigger.
+
+        Returns:
+            PropertyParams dict if update received, None on timeout
+        """
         self._pending_property_device_id = device_id
+        self._pending_property_names = set(property_names) if property_names else None
         self._property_update_event.clear()
         self._last_property_params = None
 
@@ -135,14 +159,22 @@ class GatewayTester:
                 self._property_update_event.wait(), timeout=timeout_seconds
             )
         except TimeoutError:
-            _LOGGER.warning(
-                "Timeout waiting for property update for device %s", device_id
-            )
+            if property_names:
+                _LOGGER.warning(
+                    "Timeout waiting for properties %s update for device %s",
+                    property_names,
+                    device_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "Timeout waiting for property update for device %s", device_id
+                )
             return None
         else:
             return self._last_property_params
         finally:
             self._pending_property_device_id = None
+            self._pending_property_names = None
 
     async def test_connection(self) -> bool:
         """Test connecting to the gateway."""
@@ -1111,7 +1143,9 @@ class GatewayTester:
                     ["StartUpOnOff"],
                 )
                 params = await self._wait_for_property_update(
-                    self.test_light.device_id, timeout_seconds=3.0
+                    self.test_light.device_id,
+                    timeout_seconds=3.0,
+                    property_names=["StartUpOnOff"],
                 )
                 if params and "StartUpOnOff" in params:
                     verified_value = int(params["StartUpOnOff"]["value"])  # pyright: ignore[reportUnknownArgumentType]
@@ -1194,7 +1228,9 @@ class GatewayTester:
                     ["OnOffTransitionTime"],
                 )
                 params = await self._wait_for_property_update(
-                    self.test_light.device_id, timeout_seconds=3.0
+                    self.test_light.device_id,
+                    timeout_seconds=3.0,
+                    property_names=["OnOffTransitionTime"],
                 )
                 if params and "OnOffTransitionTime" in params:
                     verified_value = int(params["OnOffTransitionTime"]["value"])  # pyright: ignore[reportUnknownArgumentType]
