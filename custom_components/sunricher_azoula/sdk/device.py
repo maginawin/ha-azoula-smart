@@ -103,7 +103,9 @@ class AzoulaDevice:
         for svc in services:
             if svc.get("identifier") == "get":
                 input_data = svc.get("inputData", [])
-                return identifier in input_data
+                return any(
+                    param.get("identifier") == identifier for param in input_data
+                )
 
         # If no get service found, assume property can't be retrieved
         return False

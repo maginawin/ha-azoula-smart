@@ -785,7 +785,9 @@ class GatewayTester:
                 )
                 tsl_file = doc_dir / f"{safe_filename}.json"
                 if tsl_file.exists():
-                    _LOGGER.info("  - TSL file already exists: %s, skipping", tsl_file.name)
+                    _LOGGER.info(
+                        "  - TSL file already exists: %s, skipping", tsl_file.name
+                    )
                     _LOGGER.info("")
                     success_count += 1
                     continue
@@ -1130,9 +1132,7 @@ class GatewayTester:
                 )
                 if params and "StartUpOnOff" in params:
                     confirmed_value = params["StartUpOnOff"]["value"]  # pyright: ignore[reportUnknownVariableType]
-                    _LOGGER.info(
-                        "  - Property post confirmation: %s", confirmed_value
-                    )  # pyright: ignore[reportUnknownArgumentType]
+                    _LOGGER.info("  - Property post confirmation: %s", confirmed_value)  # pyright: ignore[reportUnknownArgumentType]
                 else:
                     _LOGGER.warning("  - No property post confirmation received")
 
