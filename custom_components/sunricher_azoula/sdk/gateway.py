@@ -28,6 +28,8 @@ from .const import (
     METHOD_PROPERTY_GET,
     METHOD_PROPERTY_GET_REPLY,
     METHOD_PROPERTY_POST,
+    METHOD_PROPERTY_SET,
+    METHOD_PROPERTY_SET_REPLY,
     METHOD_SERVICE_INVOKE,
     METHOD_SERVICE_INVOKE_REPLY,
     METHOD_TSL_GET,
@@ -256,6 +258,7 @@ class AzoulaGateway:
             METHOD_DEVICE_DISCOVER_REPLY: self._handle_device_discover_response,
             METHOD_PROPERTY_POST: self._handle_property_post,
             METHOD_PROPERTY_GET_REPLY: self._handle_property_get_reply,
+            METHOD_PROPERTY_SET_REPLY: self._handle_property_set_reply,
             METHOD_SERVICE_INVOKE_REPLY: self._handle_service_reply,
             METHOD_TSL_GET_REPLY: self._handle_tsl_reply,
         }
@@ -375,6 +378,31 @@ class AzoulaGateway:
 
         _LOGGER.debug(
             "Requested properties %s for device %s on gateway %s",
+            properties,
+            device_id,
+            self.gateway_id,
+        )
+
+    async def set_device_properties(
+        self,
+        device_id: str,
+        properties: dict[str, Any],
+    ) -> None:
+        """Set device properties via thing.service.property.set."""
+        request_payload: dict[str, Any] = {
+            "id": str(uuid.uuid4()),
+            "deviceID": device_id,
+            "method": METHOD_PROPERTY_SET,
+            "params": properties,
+        }
+
+        self._mqtt_client.publish(
+            self._pub_topic,
+            json.dumps(request_payload),
+        )
+
+        _LOGGER.debug(
+            "Setting properties %s for device %s on gateway %s",
             properties,
             device_id,
             self.gateway_id,
@@ -511,6 +539,28 @@ class AzoulaGateway:
             device_id,
             normalized_data,  # type: ignore[arg-type]
         )
+
+    def _handle_property_set_reply(self, payload: dict[str, Any]) -> None:
+        """Handle property set reply (thing.service.property.set.reply)."""
+        code = payload.get("code", 0)
+        device_id = payload.get("deviceID")
+        request_id = payload.get("id")
+
+        if code != 200:
+            _LOGGER.warning(
+                "Property set failed for device %s on gateway %s: code=%s, id=%s",
+                device_id,
+                self.gateway_id,
+                code,
+                request_id,
+            )
+        else:
+            _LOGGER.debug(
+                "Property set succeeded for device %s on gateway %s: id=%s",
+                device_id,
+                self.gateway_id,
+                request_id,
+            )
 
     def _handle_service_reply(self, payload: dict[str, Any]) -> None:
         """Handle service invocation reply (thing.service.reply)."""

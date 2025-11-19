@@ -23,11 +23,14 @@ METHOD_SERVICE_INVOKE_REPLY = "thing.service.reply"
 METHOD_PROPERTY_POST = "thing.event.property.post"
 METHOD_PROPERTY_GET = "thing.service.property.get"
 METHOD_PROPERTY_GET_REPLY = "thing.service.property.get.reply"
+METHOD_PROPERTY_SET = "thing.service.property.set"
+METHOD_PROPERTY_SET_REPLY = "thing.service.property.set.reply"
 METHOD_TSL_GET = "thing.tsl"
 METHOD_TSL_GET_REPLY = "thing.tsl.reply"
 
 # Property service identifiers
 SERVICE_PROPERTY_GET = "get"
+SERVICE_PROPERTY_SET = "set"
 
 # Device service identifiers
 SERVICE_DEVICE_IDENTIFY = "DeviceIdentify"
